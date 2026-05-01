@@ -11,12 +11,12 @@ from .simulation_event_type import SimulationEventType
 
 class Task:
     def __init__(self, name: str, processing_time: int, dispatcher: "EventDispatcher") -> None:
-        self.name:                   str                  = name
-        self.processing_time:        int                  = processing_time
-        self.awaiting_products_fifo: list["Product"]      = []
-        self.remaining_time:         int                  = 0
-        self.current_product:        "Product | None"     = None
-        self.event_dispatcher:       "EventDispatcher"    = dispatcher
+        self.name:                   str                = name
+        self.processing_time:        int                = processing_time
+        self.awaiting_products_fifo: list["Product"]    = []
+        self.remaining_time:         int                = 0
+        self.current_product:        "Product | None"   = None
+        self.event_dispatcher:       "EventDispatcher"  = dispatcher
 
     def is_busy(self) -> bool:
         return self.current_product is not None
@@ -29,8 +29,22 @@ class Task:
             self.awaiting_products_fifo.append(product)
 
     def _start_processing(self, product: "Product", current_time: int) -> None:
+        # Calculate and record how long this product waited before starting
+        wait_time = current_time - product.current_task_arrival_time
+        product.current_task_waiting_time = wait_time
+
         self.current_product = product
         self.remaining_time  = self.processing_time
+
+        # Publish wait event only when there was an actual wait
+        if wait_time > 0:
+            self.event_dispatcher.notify(SimulationEvent(
+                event_type=SimulationEventType.TASK_WAIT_RECORDED,
+                time=current_time,
+                product=product,
+                task_name=self.name,
+            ))
+
         self.event_dispatcher.notify(SimulationEvent(
             event_type=SimulationEventType.TASK_STARTED,
             time=current_time,
@@ -45,17 +59,21 @@ class Task:
         self.remaining_time -= 1
 
         if self.remaining_time == 0:
-            finished          = self.current_product
+            finished             = self.current_product
             self.current_product = None
+
             self.event_dispatcher.notify(SimulationEvent(
                 event_type=SimulationEventType.TASK_FINISHED,
                 time=current_time,
                 product=finished,
                 task_name=self.name,
             ))
+
+            # Pull next from FIFO — was_waiting=True so wait time is computed
             if self.awaiting_products_fifo:
                 next_product = self.awaiting_products_fifo.pop(0)
                 self._start_processing(next_product, current_time)
+
             return finished
 
         return None

@@ -12,10 +12,10 @@ from .simulation_event_type import SimulationEventType
 
 class ProductionLine:
     def __init__(self, dispatcher: "EventDispatcher") -> None:
-        self.processes:       list[Process]         = []
-        self.first_process:   Process | None        = None
-        self.last_process:    Process | None        = None
-        self.event_dispatcher:"EventDispatcher"     = dispatcher
+        self.processes:        list[Process]        = []
+        self.first_process:    Process | None       = None
+        self.last_process:     Process | None       = None
+        self.event_dispatcher: "EventDispatcher"    = dispatcher
 
     def add_process(self, process: Process) -> None:
         if self.processes:
@@ -36,10 +36,19 @@ class ProductionLine:
             self.processes[idx + 1].receive_product(product, current_time)
 
     def advance(self, current_time: int) -> list["Product"]:
-        fully_completed: list["Product"] = []
+        # Step 1: advance ALL processes first, collect results
+        # Same reason as process.py — prevents a product exiting process N
+        # from being injected into process N+1 and advanced in the same cycle.
+        finished_pairs: list[tuple[Process, list["Product"]]] = []
         for process in self.processes:
             exited = process.advance(current_time)
-            for product in exited:
+            if exited:
+                finished_pairs.append((process, exited))
+
+        # Step 2: route finished products AFTER all processes have been advanced
+        fully_completed: list["Product"] = []
+        for process, products in finished_pairs:
+            for product in products:
                 if process is self.last_process:
                     product.completed_time = current_time
                     self.event_dispatcher.notify(SimulationEvent(
@@ -50,4 +59,5 @@ class ProductionLine:
                     fully_completed.append(product)
                 else:
                     self.move_prod_to_next_process(product, process, current_time)
+
         return fully_completed
