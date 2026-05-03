@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from src.model.product import Product; from src.model.task import Task; from src.model.process import Process; from src.model.production_line import ProductionLine; from src.model.simulation_engine import SimulationEngine; from src.model.event_dispatcher import EventDispatcher; from src.model.report import Report; from src.model.report_center import ReportCenter; from src.controller.main_controller import MainController; print\\('All imports OK'\\)\")",
+      "Bash(.venv\\\\Scripts\\\\python.exe -c \"from src.model.product import Product; from src.model.task import Task; from src.model.process import Process; from src.model.production_line import ProductionLine; from src.model.simulation_engine import SimulationEngine; from src.model.event_dispatcher import EventDispatcher; from src.model.report import Report; from src.model.report_center import ReportCenter; from src.controller.main_controller import MainController; print\\('All imports OK'\\)\")"
+    ]
+  }
+}
