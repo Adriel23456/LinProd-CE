@@ -4,24 +4,20 @@
       {
         "number": 1,
         "name": "Ingredients Gathering",
-        "description": "Collect every ingredient needed for the cake.",
         "tasks": [
           {
             "number": 1,
             "name": "Getting Water",
-            "description": "We need water for the cake.",
             "processing_time": 1
           },
           {
             "number": 2,
             "name": "Getting Dough",
-            "description": "We need dough for the cake.",
             "processing_time": 2
           },
           {
             "number": 3,
             "name": "Getting Eggs",
-            "description": "We need eggs for the cake.",
             "processing_time": 1
           }
         ]
@@ -29,18 +25,15 @@
       {
         "number": 2,
         "name": "Mixing",
-        "description": "Combine all ingredients into a uniform batter.",
         "tasks": [
           {
             "number": 1,
             "name": "Weighing Ingredients",
-            "description": "Precise measurement of each ingredient.",
             "processing_time": 2
           },
           {
             "number": 2,
             "name": "Blending",
-            "description": "Mix all ingredients until smooth.",
             "processing_time": 3
           }
         ]
@@ -48,24 +41,20 @@
       {
         "number": 3,
         "name": "Baking",
-        "description": "Bake the batter into a finished cake.",
         "tasks": [
           {
             "number": 1,
             "name": "Preheating Oven",
-            "description": "Bring oven to the correct temperature.",
             "processing_time": 2
           },
           {
             "number": 2,
             "name": "Baking Cake",
-            "description": "Bake until golden.",
             "processing_time": 5
           },
           {
             "number": 3,
             "name": "Cooling",
-            "description": "Let the cake cool before packaging.",
             "processing_time": 2
           }
         ]
@@ -73,18 +62,15 @@
       {
         "number": 4,
         "name": "Packaging",
-        "description": "Box and label the finished product.",
         "tasks": [
           {
             "number": 1,
             "name": "Boxing",
-            "description": "Place cake in box.",
             "processing_time": 1
           },
           {
             "number": 2,
             "name": "Labeling",
-            "description": "Apply product label and seal.",
             "processing_time": 1
           }
         ]
