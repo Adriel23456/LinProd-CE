@@ -7,39 +7,52 @@ if TYPE_CHECKING:
     from .event_dispatcher import EventDispatcher
 
 from .production_line import ProductionLine
-from .process import Process
-from .task import Task
 
 
 class LineLoader:
-    """Builds a ProductionLine from a JSON config file."""
+    """
+    Serializes / deserializes a ProductionLine to / from JSON.
+
+    Uses ProductionLine.create_process() and Process.create_task() factory
+    methods so the loader never touches EventDispatcher directly (DIP fix).
+
+    JSON schema:
+        { "production_line": { "processes": [
+            { "number": int, "name": str, "tasks": [
+                { "number": int, "name": str, "processing_time": int }
+            ]}
+        ]}}
+    """
 
     @staticmethod
     def load(path: str | Path, dispatcher: "EventDispatcher") -> ProductionLine:
         config = LineLoader._read(path)
         line   = ProductionLine(dispatcher)
 
-        raw_processes = config["production_line"]["processes"]
-
-        # Sort by number to guarantee insertion order regardless of JSON order
-        raw_processes = sorted(raw_processes, key=lambda p: p["number"])
-
+        raw_processes = sorted(config["production_line"]["processes"], key=lambda p: p["number"])
         for raw_proc in raw_processes:
-            proc = Process(raw_proc["name"], dispatcher)
-
+            proc      = line.create_process(raw_proc["name"])
             raw_tasks = sorted(raw_proc["tasks"], key=lambda t: t["number"])
             for raw_task in raw_tasks:
-                task = Task(raw_task["name"], raw_task["processing_time"], dispatcher)
-                proc.add_task(task)
+                proc.create_task(raw_task["name"], raw_task["processing_time"])
 
-            line.add_process(proc)
-
-        # First and last are determined by insertion order
         line.first_process = line.processes[0]
         line.last_process  = line.processes[-1]
-
-        LineLoader._print_loaded(line)
         return line
+
+    @staticmethod
+    def save(path: str | Path, line: ProductionLine) -> None:
+        processes_data = []
+        for i, proc in enumerate(line.processes, 1):
+            tasks_data = [
+                {"number": j, "name": t.name, "processing_time": t.processing_time}
+                for j, t in enumerate(proc.tasks, 1)
+            ]
+            processes_data.append({"number": i, "name": proc.name, "tasks": tasks_data})
+
+        data = {"production_line": {"processes": processes_data}}
+        with open(Path(path), "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
 
     @staticmethod
     def _read(path: str | Path) -> dict:
@@ -48,14 +61,3 @@ class LineLoader:
             raise FileNotFoundError(f"[LineLoader] Config not found: {path}")
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-
-    @staticmethod
-    def _print_loaded(line: ProductionLine) -> None:
-        print("\n[LineLoader] Production line loaded successfully")
-        print(f"  Processes : {len(line.processes)}")
-        for proc in line.processes:
-            print(f"  └─ {proc.name}  ({len(proc.tasks)} tasks)")
-            for task in proc.tasks:
-                print(f"       └─ {task.name}  [proc_time={task.processing_time}]")
-        print(f"  First : {line.first_process.name}")
-        print(f"  Last  : {line.last_process.name}\n")
