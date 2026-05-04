@@ -459,11 +459,11 @@ customtkinter
 
 ## Authors
 
+```
 Adriel S. Chaves Salazar
 Daniel Duarte Cordero
 Ma. Paula Madrigal Sánchez
 Andrés Molina Redondo
-
-& Project Team
 CE-5507 — Instituto Tecnológico de Costa Rica
 Semester 1, 2026
+```
