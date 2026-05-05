@@ -145,7 +145,7 @@ class SetupView(ctk.CTkFrame):
 
         h_scroll = ttk.Scrollbar(
             canvas_row, orient="horizontal", style=theme.H_SCROLL,
-            command=self._proc_tiles_canvas.xview,
+            command=self._on_proc_tiles_xscroll,
         )
         h_scroll.pack(side="top", fill="x")
         self._proc_tiles_canvas.configure(xscrollcommand=h_scroll.set)
@@ -155,9 +155,11 @@ class SetupView(ctk.CTkFrame):
                                               window=self._proc_tiles_frame)
         self._proc_tiles_frame.bind(
             "<Configure>",
-            lambda _e: self._proc_tiles_canvas.configure(
-                scrollregion=self._proc_tiles_canvas.bbox("all")
-            ),
+            lambda _e: self._sync_proc_tiles_scrollregion(),
+        )
+        self._proc_tiles_canvas.bind(
+            "<Configure>",
+            lambda _e: self._sync_proc_tiles_scrollregion(),
         )
 
     def _build_body(self) -> None:
@@ -214,11 +216,20 @@ class SetupView(ctk.CTkFrame):
             font=theme.font(12, bold=True), text_color=theme.TEXT_DIM,
         ).pack(anchor="w", padx=10, pady=(10, 4))
 
+        preview_wrap = tk.Frame(parent, bg=theme.BG_PANEL)
+        preview_wrap.pack(fill="both", expand=True, padx=8, pady=(0, 10))
+
         self.line_canvas = tk.Canvas(
-            parent, bg=theme.BG_MAIN, highlightthickness=1,
+            preview_wrap, bg=theme.BG_MAIN, highlightthickness=1,
             highlightbackground=theme.BORDER,
         )
-        self.line_canvas.pack(fill="both", expand=True, padx=8, pady=(0, 10))
+        v_scroll = ttk.Scrollbar(
+            preview_wrap, orient="vertical", style=theme.V_SCROLL,
+            command=self.line_canvas.yview,
+        )
+        v_scroll.pack(side="right", fill="y")
+        self.line_canvas.pack(side="left", fill="both", expand=True)
+        self.line_canvas.configure(yscrollcommand=v_scroll.set)
 
     def _build_footer(self) -> None:
         bar = ctk.CTkFrame(self, fg_color=theme.BG_PANEL, corner_radius=0,
@@ -252,10 +263,74 @@ class SetupView(ctk.CTkFrame):
 
         self._proc_tiles_frame.update_idletasks()
         if self._proc_tiles_canvas:
-            self._proc_tiles_canvas.configure(
-                scrollregion=self._proc_tiles_canvas.bbox("all")
-            )
+            self._sync_proc_tiles_scrollregion()
         self._update_canvas_preview(pl.processes)
+
+    def _sync_proc_tiles_scrollregion(self) -> None:
+        """Keep process tiles from panning into empty space."""
+        if self._proc_tiles_canvas is None:
+            return
+        c = self._proc_tiles_canvas
+        c.update_idletasks()
+        bbox = c.bbox("all")
+        if not bbox:
+            c.configure(scrollregion=(0, 0, c.winfo_width(), c.winfo_height()))
+            c.xview_moveto(0)
+            return
+
+        x1, y1, x2, y2 = bbox
+        view_w = max(1, c.winfo_width())
+        view_h = max(1, c.winfo_height())
+        content_w = max(0, x2 - x1)
+        content_h = max(0, y2 - y1)
+
+        # When content does not overflow horizontally, lock to the left edge.
+        region_w = max(view_w, content_w)
+        region_h = max(view_h, content_h)
+        c.configure(scrollregion=(0, 0, region_w, region_h))
+        if content_w <= view_w + 2:
+            c.xview_moveto(0)
+
+    def _proc_tiles_has_overflow(self) -> bool:
+        if self._proc_tiles_canvas is None:
+            return False
+        c = self._proc_tiles_canvas
+        c.update_idletasks()
+        bbox = c.bbox("all")
+        if not bbox:
+            return False
+        x1, _y1, x2, _y2 = bbox
+        content_w = max(0, x2 - x1)
+        return content_w > (c.winfo_width() + 2)
+
+    def _on_proc_tiles_xscroll(self, *args) -> None:
+        """Clamp process-strip scrolling so it never reveals blank space on the left."""
+        if self._proc_tiles_canvas is None:
+            return
+        c = self._proc_tiles_canvas
+
+        if not self._proc_tiles_has_overflow():
+            c.xview_moveto(0)
+            return
+
+        if len(args) >= 3 and args[0] == "scroll":
+            units = int(args[1])
+            if units < 0:
+                left, _right = c.xview()
+                if left <= 0.0:
+                    c.xview_moveto(0)
+                    return
+            c.xview(*args)
+            return
+
+        if len(args) >= 2 and args[0] == "moveto":
+            frac = max(0.0, min(1.0, float(args[1])))
+            c.xview_moveto(frac)
+            if c.xview()[0] < 0.001:
+                c.xview_moveto(0)
+            return
+
+        c.xview(*args)
 
     def render_task_list(self, processes) -> None:
         if self.task_list is None or self._selected_proc is None:
@@ -381,17 +456,18 @@ class SetupView(ctk.CTkFrame):
             return
         c = self.line_canvas
         c.delete("all")
+        c.update_idletasks()
+        W = c.winfo_width()  or 500
+        H = c.winfo_height() or 300
 
         if not processes:
             c.create_text(
                 10, 20, anchor="w", text="No processes yet.",
                 fill=theme.TEXT_DIM, font=(theme.FONT_FAMILY, 9),
             )
+            c.configure(scrollregion=(0, 0, W, H))
             return
 
-        c.update_idletasks()
-        W = c.winfo_width()  or 500
-        H = c.winfo_height() or 300
         n = len(processes)
 
         BOX_W   = 110
@@ -461,6 +537,10 @@ class SetupView(ctk.CTkFrame):
             c.create_text(x + BOX_W // 2, y + BOX_H // 2 + 9,
                           text=f"{len(proc.tasks)} task(s)", fill=fg,
                           font=(theme.FONT_FAMILY, 7))
+
+        rows = math.ceil(n / per_row)
+        content_h = 10 + rows * BOX_H + max(0, rows - 1) * GAP_V + 10
+        c.configure(scrollregion=(0, 0, W, max(H, content_h)))
 
     # ── Button / event handlers ───────────────────────────────────────────────
 
