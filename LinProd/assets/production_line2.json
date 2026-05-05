@@ -1,0 +1,611 @@
+{
+  "production_line": {
+    "processes": [
+      {
+        "number": 1,
+        "name": "Raw Material Reception",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Truck Arrival Registration",
+            "processing_time": 2
+          },
+          {
+            "number": 2,
+            "name": "Supplier Documentation Review",
+            "processing_time": 3
+          },
+          {
+            "number": 3,
+            "name": "Raw Material Unloading",
+            "processing_time": 6
+          },
+          {
+            "number": 4,
+            "name": "Initial Weight Measurement",
+            "processing_time": 2
+          },
+          {
+            "number": 5,
+            "name": "Batch Code Assignment",
+            "processing_time": 1
+          }
+        ]
+      },
+      {
+        "number": 2,
+        "name": "Quality Inspection",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Visual Inspection",
+            "processing_time": 3
+          },
+          {
+            "number": 2,
+            "name": "Moisture Testing",
+            "processing_time": 4
+          },
+          {
+            "number": 3,
+            "name": "Contamination Screening",
+            "processing_time": 5
+          },
+          {
+            "number": 4,
+            "name": "Sample Collection",
+            "processing_time": 2
+          },
+          {
+            "number": 5,
+            "name": "Laboratory Approval",
+            "processing_time": 7
+          }
+        ]
+      },
+      {
+        "number": 3,
+        "name": "Material Storage",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Warehouse Location Assignment",
+            "processing_time": 2
+          },
+          {
+            "number": 2,
+            "name": "Pallet Placement",
+            "processing_time": 4
+          },
+          {
+            "number": 3,
+            "name": "Inventory System Update",
+            "processing_time": 2
+          },
+          {
+            "number": 4,
+            "name": "Temperature Condition Verification",
+            "processing_time": 3
+          }
+        ]
+      },
+      {
+        "number": 4,
+        "name": "Pre-Production Preparation",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Production Order Review",
+            "processing_time": 3
+          },
+          {
+            "number": 2,
+            "name": "Machine Availability Check",
+            "processing_time": 2
+          },
+          {
+            "number": 3,
+            "name": "Tooling Preparation",
+            "processing_time": 5
+          },
+          {
+            "number": 4,
+            "name": "Operator Assignment",
+            "processing_time": 2
+          },
+          {
+            "number": 5,
+            "name": "Safety Checklist Completion",
+            "processing_time": 3
+          }
+        ]
+      },
+      {
+        "number": 5,
+        "name": "Ingredient Weighing",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Primary Ingredient Weighing",
+            "processing_time": 4
+          },
+          {
+            "number": 2,
+            "name": "Secondary Ingredient Weighing",
+            "processing_time": 3
+          },
+          {
+            "number": 3,
+            "name": "Additive Measurement",
+            "processing_time": 2
+          },
+          {
+            "number": 4,
+            "name": "Weight Validation",
+            "processing_time": 2
+          },
+          {
+            "number": 5,
+            "name": "Ingredient Label Verification",
+            "processing_time": 1
+          }
+        ]
+      },
+      {
+        "number": 6,
+        "name": "Mixing and Blending",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Mixer Setup",
+            "processing_time": 3
+          },
+          {
+            "number": 2,
+            "name": "Dry Ingredient Loading",
+            "processing_time": 4
+          },
+          {
+            "number": 3,
+            "name": "Liquid Ingredient Addition",
+            "processing_time": 3
+          },
+          {
+            "number": 4,
+            "name": "Primary Mixing Cycle",
+            "processing_time": 8
+          },
+          {
+            "number": 5,
+            "name": "Consistency Check",
+            "processing_time": 3
+          },
+          {
+            "number": 6,
+            "name": "Secondary Mixing Cycle",
+            "processing_time": 5
+          }
+        ]
+      },
+      {
+        "number": 7,
+        "name": "Forming",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Mold Preparation",
+            "processing_time": 3
+          },
+          {
+            "number": 2,
+            "name": "Material Feeding",
+            "processing_time": 4
+          },
+          {
+            "number": 3,
+            "name": "Shape Forming",
+            "processing_time": 6
+          },
+          {
+            "number": 4,
+            "name": "Initial Dimension Check",
+            "processing_time": 2
+          },
+          {
+            "number": 5,
+            "name": "Defective Unit Removal",
+            "processing_time": 2
+          }
+        ]
+      },
+      {
+        "number": 8,
+        "name": "Thermal Processing",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Oven Preheating",
+            "processing_time": 6
+          },
+          {
+            "number": 2,
+            "name": "Tray Loading",
+            "processing_time": 4
+          },
+          {
+            "number": 3,
+            "name": "Primary Heating",
+            "processing_time": 12
+          },
+          {
+            "number": 4,
+            "name": "Temperature Stabilization",
+            "processing_time": 5
+          },
+          {
+            "number": 5,
+            "name": "Final Heating Cycle",
+            "processing_time": 10
+          },
+          {
+            "number": 6,
+            "name": "Tray Removal",
+            "processing_time": 3
+          }
+        ]
+      },
+      {
+        "number": 9,
+        "name": "Cooling",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Cooling Rack Placement",
+            "processing_time": 3
+          },
+          {
+            "number": 2,
+            "name": "Ambient Cooling",
+            "processing_time": 10
+          },
+          {
+            "number": 3,
+            "name": "Forced Air Cooling",
+            "processing_time": 8
+          },
+          {
+            "number": 4,
+            "name": "Temperature Verification",
+            "processing_time": 2
+          }
+        ]
+      },
+      {
+        "number": 10,
+        "name": "Intermediate Quality Control",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Surface Inspection",
+            "processing_time": 3
+          },
+          {
+            "number": 2,
+            "name": "Weight Sampling",
+            "processing_time": 2
+          },
+          {
+            "number": 3,
+            "name": "Dimension Sampling",
+            "processing_time": 3
+          },
+          {
+            "number": 4,
+            "name": "Texture Evaluation",
+            "processing_time": 4
+          },
+          {
+            "number": 5,
+            "name": "Batch Approval Decision",
+            "processing_time": 2
+          }
+        ]
+      },
+      {
+        "number": 11,
+        "name": "Finishing",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Edge Trimming",
+            "processing_time": 4
+          },
+          {
+            "number": 2,
+            "name": "Surface Smoothing",
+            "processing_time": 5
+          },
+          {
+            "number": 3,
+            "name": "Decoration Application",
+            "processing_time": 6
+          },
+          {
+            "number": 4,
+            "name": "Final Appearance Check",
+            "processing_time": 3
+          }
+        ]
+      },
+      {
+        "number": 12,
+        "name": "Final Quality Assurance",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Random Sample Selection",
+            "processing_time": 2
+          },
+          {
+            "number": 2,
+            "name": "Functional Test",
+            "processing_time": 5
+          },
+          {
+            "number": 3,
+            "name": "Packaging Compatibility Check",
+            "processing_time": 3
+          },
+          {
+            "number": 4,
+            "name": "Compliance Documentation Review",
+            "processing_time": 4
+          },
+          {
+            "number": 5,
+            "name": "Final Release Approval",
+            "processing_time": 3
+          }
+        ]
+      },
+      {
+        "number": 13,
+        "name": "Packaging Preparation",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Packaging Material Retrieval",
+            "processing_time": 3
+          },
+          {
+            "number": 2,
+            "name": "Box Assembly",
+            "processing_time": 4
+          },
+          {
+            "number": 3,
+            "name": "Label Roll Installation",
+            "processing_time": 2
+          },
+          {
+            "number": 4,
+            "name": "Barcode System Check",
+            "processing_time": 2
+          }
+        ]
+      },
+      {
+        "number": 14,
+        "name": "Primary Packaging",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Unit Placement",
+            "processing_time": 4
+          },
+          {
+            "number": 2,
+            "name": "Sealing",
+            "processing_time": 3
+          },
+          {
+            "number": 3,
+            "name": "Primary Labeling",
+            "processing_time": 2
+          },
+          {
+            "number": 4,
+            "name": "Barcode Printing",
+            "processing_time": 2
+          },
+          {
+            "number": 5,
+            "name": "Package Weight Verification",
+            "processing_time": 2
+          }
+        ]
+      },
+      {
+        "number": 15,
+        "name": "Secondary Packaging",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Case Packing",
+            "processing_time": 5
+          },
+          {
+            "number": 2,
+            "name": "Case Sealing",
+            "processing_time": 3
+          },
+          {
+            "number": 3,
+            "name": "Case Labeling",
+            "processing_time": 2
+          },
+          {
+            "number": 4,
+            "name": "Pallet Arrangement",
+            "processing_time": 6
+          },
+          {
+            "number": 5,
+            "name": "Pallet Wrapping",
+            "processing_time": 4
+          }
+        ]
+      },
+      {
+        "number": 16,
+        "name": "Finished Goods Storage",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Finished Goods Registration",
+            "processing_time": 2
+          },
+          {
+            "number": 2,
+            "name": "Warehouse Slot Assignment",
+            "processing_time": 2
+          },
+          {
+            "number": 3,
+            "name": "Pallet Transport to Storage",
+            "processing_time": 5
+          },
+          {
+            "number": 4,
+            "name": "Inventory Confirmation",
+            "processing_time": 2
+          }
+        ]
+      },
+      {
+        "number": 17,
+        "name": "Order Preparation",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Customer Order Review",
+            "processing_time": 3
+          },
+          {
+            "number": 2,
+            "name": "Picking List Generation",
+            "processing_time": 2
+          },
+          {
+            "number": 3,
+            "name": "Product Picking",
+            "processing_time": 7
+          },
+          {
+            "number": 4,
+            "name": "Order Consolidation",
+            "processing_time": 4
+          },
+          {
+            "number": 5,
+            "name": "Order Accuracy Check",
+            "processing_time": 3
+          }
+        ]
+      },
+      {
+        "number": 18,
+        "name": "Dispatch",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Shipping Document Generation",
+            "processing_time": 3
+          },
+          {
+            "number": 2,
+            "name": "Truck Assignment",
+            "processing_time": 2
+          },
+          {
+            "number": 3,
+            "name": "Pallet Loading",
+            "processing_time": 6
+          },
+          {
+            "number": 4,
+            "name": "Final Dispatch Verification",
+            "processing_time": 3
+          },
+          {
+            "number": 5,
+            "name": "Shipment Release",
+            "processing_time": 2
+          }
+        ]
+      },
+      {
+        "number": 19,
+        "name": "Production Reporting",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Batch Data Collection",
+            "processing_time": 3
+          },
+          {
+            "number": 2,
+            "name": "Downtime Logging",
+            "processing_time": 2
+          },
+          {
+            "number": 3,
+            "name": "Quality Metrics Recording",
+            "processing_time": 3
+          },
+          {
+            "number": 4,
+            "name": "Production Efficiency Calculation",
+            "processing_time": 4
+          },
+          {
+            "number": 5,
+            "name": "Supervisor Report Approval",
+            "processing_time": 3
+          }
+        ]
+      },
+      {
+        "number": 20,
+        "name": "Cleaning and Maintenance",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Line Shutdown",
+            "processing_time": 2
+          },
+          {
+            "number": 2,
+            "name": "Equipment Cleaning",
+            "processing_time": 8
+          },
+          {
+            "number": 3,
+            "name": "Waste Disposal",
+            "processing_time": 4
+          },
+          {
+            "number": 4,
+            "name": "Preventive Maintenance Check",
+            "processing_time": 6
+          },
+          {
+            "number": 5,
+            "name": "Line Readiness Confirmation",
+            "processing_time": 3
+          }
+        ]
+      }
+    ]
+  }
+}
