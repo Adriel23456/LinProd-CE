@@ -54,3 +54,4 @@ class SimulationEvent:
     product:      "Product | None"  = field(default=None)
     task_name:    str | None        = field(default=None)
     process_name: str | None        = field(default=None)
+    task_processing_time: int               = field(default=0)

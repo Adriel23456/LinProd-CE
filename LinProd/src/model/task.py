@@ -127,6 +127,8 @@ class Task:
                 time=current_time,
                 product=finished,
                 task_name=self.name,
+                process_name=self.process_name,
+                task_processing_time=self.processing_time,
             ))
 
             # Immediately pull the next waiting product off the queue.

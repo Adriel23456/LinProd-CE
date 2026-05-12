@@ -33,6 +33,7 @@ class ReportCenter(Observer):
         self._first_p_completed_id:       int                  = -1
         self._last_p_completed_id:        int                  = -1
         self._process_duration_map:       dict[str, list[int]] = {}
+        self._process_pure_load_map:      dict[str, int]       = {}
 
     # ── Observer protocol ─────────────────────────────────────────────────────
 
@@ -51,6 +52,13 @@ class ReportCenter(Observer):
         elif event.event_type == SimulationEventType.PROCESS_FINISHED:
             duration = event.time - event.product.current_process_arrival_time
             self.rec_process_time(event.product, event.process_name or "", duration)
+        
+        elif event.event_type == SimulationEventType.TASK_FINISHED:  # NEW
+            if event.process_name:
+                self._process_pure_load_map[event.process_name] = (
+                    self._process_pure_load_map.get(event.process_name, 0)
+                    + event.task_processing_time
+                )
 
     # ── Public accumulator methods (per class diagram) ────────────────────────
 
@@ -82,12 +90,9 @@ class ReportCenter(Observer):
     # ── Analytics ─────────────────────────────────────────────────────────────
 
     def get_bottleneck(self) -> str:
-        if not self._process_duration_map:
+        if not self._process_pure_load_map:
             return "N/A"
-        return max(
-            self._process_duration_map,
-            key=lambda k: sum(self._process_duration_map[k]),
-        )
+        return max(self._process_pure_load_map, key=lambda k: self._process_pure_load_map[k])
 
     def calc_average_execution_time(self) -> float:
         if not self._completed_times:
