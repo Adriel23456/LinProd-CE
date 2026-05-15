@@ -122,7 +122,7 @@ class SimulationView(ctk.CTkFrame, Observer):
         # Left: title
         title_lbl = ctk.CTkLabel(
             bar, text="simulation in progress",
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=16, weight="bold"),
+            font=theme.font(40, family=theme.FONT_BOLD),
             text_color=theme._TEXT_MAIN,
         )
         title_lbl.grid(row=0, column=0, sticky="w", padx=(4, 12))
@@ -135,14 +135,14 @@ class SimulationView(ctk.CTkFrame, Observer):
             border_width=1,
             border_color=theme._PANEL_BD,
         )
-        timer_frame.grid(row=0, column=0, sticky="ew", padx=(220, 8))
+        timer_frame.grid(row=0, column=0, sticky="ew", padx=(600, 8))
 
         self._time_label = ctk.CTkLabel(
             timer_frame, text="t = 0",
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=34, weight="bold"),
+            font=theme.font(27, family=theme.FONT_BOLD),
             text_color=theme._TEXT_MAIN,
         )
-        self._time_label.pack(pady=10, padx=40)
+        self._time_label.pack(pady=10, padx=80)
 
         # Right: set up + report buttons
         btn_frame = ctk.CTkFrame(bar, fg_color="transparent")
@@ -153,7 +153,7 @@ class SimulationView(ctk.CTkFrame, Observer):
             width=100, height=38, corner_radius=10,
             fg_color=theme._BTN_ADD, hover_color=theme._BTN_ADD_H,
             text_color=theme._TEXT_MAIN,
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=13, weight="bold"),
+            font=theme.font(13, family=theme.FONT_BOLD),
             command=self._go_to_setup,
         ).pack(side="left", padx=(0, 6))
 
@@ -162,7 +162,7 @@ class SimulationView(ctk.CTkFrame, Observer):
             width=100, height=38, corner_radius=10,
             fg_color=theme._BTN_ADD, hover_color=theme._BTN_ADD_H,
             text_color=theme._TEXT_MAIN,
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=13, weight="bold"),
+            font=theme.font(13, family=theme.FONT_BOLD),
             command=self._go_to_report,
         ).pack(side="left")
 
@@ -236,7 +236,7 @@ class SimulationView(ctk.CTkFrame, Observer):
 
     def _build_bottom_bar(self) -> None:
         bar = ctk.CTkFrame(self, fg_color="transparent")
-        bar.grid(row=2, column=0, sticky="ew", padx=(16, 6), pady=(0, 12))
+        bar.grid(row=2, column=0, sticky="ew", padx=(16, 16), pady=(0, 12))
         bar.columnconfigure(2, weight=1)   # speed block expands
 
         # PLAY button
@@ -245,7 +245,7 @@ class SimulationView(ctk.CTkFrame, Observer):
             width=200, height=52, corner_radius=12,
             fg_color=theme._BTN_ADD, hover_color=theme._BTN_ADD_H,
             text_color=theme._TEXT_MAIN,
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=20, weight="bold"),
+            font=theme.font(20, family=theme.FONT_BOLD),
             command=self._on_play_pause,
         )
         self._play_btn.grid(row=0, column=0, padx=(0, 10))
@@ -256,7 +256,7 @@ class SimulationView(ctk.CTkFrame, Observer):
             width=200, height=52, corner_radius=12,
             fg_color=theme._BTN_ADD, hover_color=theme._BTN_ADD_H,
             text_color=theme._TEXT_MAIN,
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=20, weight="bold"),
+            font=theme.font(20, family=theme.FONT_BOLD),
             command=self._reset,
         ).grid(row=0, column=1, padx=(0, 10))
 
@@ -276,13 +276,13 @@ class SimulationView(ctk.CTkFrame, Observer):
 
         ctk.CTkLabel(
             speed_hdr, text="speed",
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=12),
+            font=theme.font(12, family=theme.FONT_BOLD),
             text_color=theme._TEXT_DIM2,
         ).pack(side="left")
 
         self._speed_lbl = ctk.CTkLabel(
             speed_hdr, text="50 ms",
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=12, weight="bold"),
+            font=theme.font(12, family=theme.FONT_BOLD),
             text_color=theme.NEON,
         )
         self._speed_lbl.pack(side="right")
@@ -310,7 +310,7 @@ class SimulationView(ctk.CTkFrame, Observer):
             width=260,
         )
         sidebar.grid(row=1, column=1, rowspan=2, sticky="nsew",
-                     padx=(0, 16), pady=(0, 12))
+                     padx=(0, 16), pady=(16, 12))
         sidebar.pack_propagate(False)
         sidebar.rowconfigure(3, weight=1)   # log expands
 
@@ -323,7 +323,7 @@ class SimulationView(ctk.CTkFrame, Observer):
         self._step_switch = ctk.CTkSwitch(
             step_mode_frame,
             text="step mode",
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=13, weight="bold"),
+            font=theme.font(13, family=theme.FONT_BOLD),
             text_color=theme._TEXT_MAIN,
             fg_color=theme._PANEL_BD,
             progress_color=theme.NEON,
@@ -346,7 +346,7 @@ class SimulationView(ctk.CTkFrame, Observer):
             fg_color=theme._PANEL_BD,
             border_color=theme._PANEL_BD,
             text_color=theme._TEXT_MAIN,
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=12),
+            font=theme.font(12, family=theme.FONT_BOLD),
             placeholder_text="N",
         )
         self._step_entry.grid(row=0, column=0, padx=(0, 6))
@@ -356,7 +356,7 @@ class SimulationView(ctk.CTkFrame, Observer):
             height=38, corner_radius=10,
             fg_color=theme._BTN_ADD, hover_color=theme._BTN_ADD_H,
             text_color=theme._TEXT_MAIN,
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=13, weight="bold"),
+            font=theme.font(13, family=theme.FONT_BOLD),
             state="disabled",
             command=self._do_step,
         )
@@ -369,7 +369,7 @@ class SimulationView(ctk.CTkFrame, Observer):
             fg_color=theme.NEON,
             hover_color=theme._BTN_ADD_H,
             text_color=theme.BG_MAIN,
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=13, weight="bold"),
+            font=theme.font(13, family=theme.FONT_BOLD),
             state="disabled",
             command=self._do_inject,
         )
@@ -383,7 +383,7 @@ class SimulationView(ctk.CTkFrame, Observer):
         # ── Event log ─────────────────────────────────────────────────────────
         ctk.CTkLabel(
             sidebar, text="event log",
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=14, weight="bold"),
+            font=theme.font(14, family=theme.FONT_BOLD),
             text_color=theme._TEXT_MAIN,
         ).pack(anchor="w", padx=PAD, pady=(0, 6))
 
@@ -519,13 +519,31 @@ class SimulationView(ctk.CTkFrame, Observer):
     # ── Canvas drawing ────────────────────────────────────────────────────────
 
     def _get_box_width(self, proc) -> int:
+        """
+        Calculate dynamic process width based on the
+        longest task/process name.
+        """
+
         try:
-            f = tkfont.Font(family=theme.FONT_FAMILY, size=8, weight="bold")
-            name_w = f.measure(proc.name) + 28
-            task_w = max((f.measure(t.name) + 28 for t in proc.tasks), default=90)
-            return max(90, name_w, task_w)
+            font=theme.font(9, family=theme.FONT_BOLD)
+
+            # Process title width
+            proc_w = font.measure(proc.name)
+
+            # Longest task width
+            longest_task = 0
+            for task in proc.tasks:
+                w = font.measure(task.name)
+                if w > longest_task:
+                    longest_task = w
+
+            # Extra padding inside boxes
+            content_w = max(proc_w, longest_task)
+
+            return max(140, content_w + 50)
+
         except Exception:
-            return max(90, len(proc.name) * 9 + 28)
+            return 160
 
     def _redraw_canvas(self) -> None:
         if not self.controller or not self.line_canvas:
@@ -582,7 +600,7 @@ class SimulationView(ctk.CTkFrame, Observer):
                 cx + 12, py_top + HDR_H // 2,
                 text=proc.name, anchor="w",
                 fill=theme._TEXT_MAIN,
-                font=(theme.FONT_FAMILY, 9, "bold"),
+               font=theme.font(12, family=theme.FONT_BOLD),
             )
 
             # Task boxes
@@ -620,7 +638,7 @@ class SimulationView(ctk.CTkFrame, Observer):
                     tx + 22, ty + 13,
                     text=task.name, anchor="w",
                     fill=theme._TEXT_MAIN,
-                    font=(theme.FONT_FAMILY, 8, "bold"),
+                    font=theme.font(10, family=theme.FONT_BOLD),
                 )
 
                 # Status text
@@ -629,7 +647,7 @@ class SimulationView(ctk.CTkFrame, Observer):
                     tx + 22, ty + 28,
                     text=f"{pid_txt}  q = {q_len}", anchor="w",
                     fill=theme._TEXT_DIM2,
-                    font=(theme.FONT_FAMILY, 7),
+                    font=theme.font(9, family=theme.FONT_BOLD),
                 )
 
             # Arrow to next process
@@ -771,18 +789,18 @@ class SimulationView(ctk.CTkFrame, Observer):
 
             ctk.CTkLabel(
                 modal, text="PRODUCTION COMPLETE!",
-                font=ctk.CTkFont(family=theme.FONT_FAMILY, size=18, weight="bold"),
+                font=theme.font(18, family=theme.FONT_BOLD),
                 text_color=theme.NEON,
             ).pack(pady=(36, 8))
             ctk.CTkLabel(
                 modal, text="Press  report  to view results",
-                font=ctk.CTkFont(family=theme.FONT_FAMILY, size=12),
+                font=theme.font(12, family=theme.FONT_BOLD),
                 text_color=theme._TEXT_DIM2,
             ).pack(pady=(0, 24))
             ctk.CTkButton(
                 modal, text="OK", width=120, corner_radius=10, height=36,
                 fg_color=theme.NEON, text_color=theme.BG_MAIN,
-                font=ctk.CTkFont(family=theme.FONT_FAMILY, size=13, weight="bold"),
+                font=theme.font(13, family=theme.FONT_BOLD),
                 command=modal.destroy,
             ).pack()
             modal.after(50, modal.grab_set)

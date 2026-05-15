@@ -304,7 +304,7 @@ class SetupView(ctk.CTkFrame):
 
         ctk.CTkLabel(
             container, text="line preview",
-            font=theme.font(14, bold=True), text_color=theme._TEXT_MAIN,
+            font=theme.font(14, family=theme.FONT_BOLD), text_color=theme._TEXT_MAIN,
         ).grid(row=0, column=0, sticky="w", padx=16, pady=(12, 4))
 
         preview_wrap = tk.Frame(container, bg=theme._PANEL_BG)
@@ -323,7 +323,7 @@ class SetupView(ctk.CTkFrame):
         self.line_canvas.configure(yscrollcommand=v_scroll.set)
 
     def _build_footer_new(self, parent: ctk.CTkFrame) -> None:
-        footer = ctk.CTkFrame(parent, fg_color="transparent")
+        footer = ctk.CTkFrame(parent, fg_color="transparent", corner_radius=16)
         footer.grid(row=3, column=0, sticky="ew", pady=(4, 0))
         footer.columnconfigure(0, weight=1)
 
@@ -338,7 +338,7 @@ class SetupView(ctk.CTkFrame):
             fg_color=theme._BTN_SIM, hover_color=theme._BTN_SIM_H,
             border_width=1, border_color=theme._PANEL_BD,
             text_color=theme._TEXT_MAIN,
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=18, weight="bold"),
+            font=theme.font(18, family=theme.FONT_BOLD),
             command=self._confirm,
         ).grid(row=0, column=1, padx=(12, 0))
 
@@ -415,17 +415,17 @@ class SetupView(ctk.CTkFrame):
             border_width=1,
             corner_radius=12,
         )
-        tile.pack(side="left", padx=4, pady=6)
+        tile.pack(side="left", padx=4, pady=(0,6))
 
         name_lbl = ctk.CTkLabel(
             tile, text=proc.name, text_color=fg,
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=10, weight="bold"),
+            font=theme.font(12, family=theme.FONT_BOLD),
         )
         name_lbl.pack(padx=12, pady=(8, 0))
 
         task_lbl = ctk.CTkLabel(
             tile, text=f"{len(proc.tasks)} task(s)", text_color=fg,
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=9),
+            font=theme.font(9, family=theme.FONT_BOLD),
         )
         task_lbl.pack(padx=12, pady=(2, 0))
 
@@ -436,7 +436,7 @@ class SetupView(ctk.CTkFrame):
             btn_row, text="◄", width=28, height=24,
             fg_color="transparent", text_color=theme._ACCENT,
             hover_color=theme._PANEL_BD,
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=9),
+            font=theme.font(9, family=theme.FONT_BOLD),
             cursor="hand2" if idx > 0 else "arrow",
             state="normal" if idx > 0 else "disabled",
             command=lambda n=proc.name, i=idx: self._reorder_proc(n, i - 1),
@@ -446,7 +446,7 @@ class SetupView(ctk.CTkFrame):
             btn_row, text="✕", width=28, height=24,
             fg_color="transparent", text_color=theme.NEON_RED,
             hover_color=theme._PANEL_BD,
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=9),
+            font=theme.font(9, family=theme.FONT_BOLD),
             cursor="hand2",
             command=lambda n=proc.name: self._remove_process(n),
         ).pack(side="left", padx=2)
@@ -455,7 +455,7 @@ class SetupView(ctk.CTkFrame):
             btn_row, text="►", width=28, height=24,
             fg_color="transparent", text_color=theme._ACCENT,
             hover_color=theme._PANEL_BD,
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=9),
+            font=theme.font(9, family=theme.FONT_BOLD),
             cursor="hand2" if idx < total - 1 else "arrow",
             state="normal" if idx < total - 1 else "disabled",
             command=lambda n=proc.name, i=idx: self._reorder_proc(n, i + 1),
@@ -490,7 +490,7 @@ class SetupView(ctk.CTkFrame):
             text=task.name,
             fg_color="transparent",
             text_color=theme._TEXT_MAIN,
-            font=theme.font(10, bold=True),
+            font=theme.font(10, family=theme.FONT_BOLD),
         ).pack(padx=14, pady=(8, 2))
 
         ctk.CTkLabel(
@@ -601,20 +601,52 @@ class SetupView(ctk.CTkFrame):
                     )
 
         for i, proc in enumerate(processes):
-            x, y  = positions[i]
-            color = (theme.NEON     if i == 0 and n == 1 else
-                     theme.NEON     if i == 0 else
-                     theme.NEON_RED if i == n - 1 else
-                     theme._BTN_ADD)
-            fg    = theme.BG_MAIN if color in (theme.NEON, theme.NEON_RED) else theme._TEXT_MAIN
-            c.create_rectangle(x, y, x + BOX_W, y + BOX_H,
-                               fill=color, outline=theme._PANEL_BD, width=1)
-            c.create_text(x + BOX_W // 2, y + BOX_H // 2 - 8,
-                          text=proc.name[:16], fill=fg,
-                          font=(theme.FONT_FAMILY, 8, "bold"))
-            c.create_text(x + BOX_W // 2, y + BOX_H // 2 + 9,
-                          text=f"{len(proc.tasks)} task(s)", fill=fg,
-                          font=(theme.FONT_FAMILY, 7))
+            x, y = positions[i]
+
+            color = (
+                theme.NEON if i == 0 and n == 1 else
+                theme.NEON if i == 0 else
+                theme.NEON_RED if i == n - 1 else
+                theme._BTN_ADD
+            )
+
+            fg = (
+                theme.BG_MAIN
+                if color in (theme.NEON, theme.NEON_RED)
+                else theme._TEXT_MAIN
+            )
+
+            proc_frame = ctk.CTkFrame(
+                c,
+                width=BOX_W + 5,
+                height=BOX_H + 5,
+                fg_color=color,
+                corner_radius=14,
+                border_width=1,
+                border_color=theme._PANEL_BD,
+            )
+
+            proc_frame.pack_propagate(False)
+
+            ctk.CTkLabel(
+                proc_frame,
+                text=proc.name[:16],
+                text_color=fg,
+                font=theme.font(10, family=theme.FONT_BOLD),
+            ).pack(pady=(6, 0))
+
+            ctk.CTkLabel(
+                proc_frame,
+                text=f"{len(proc.tasks)} task(s)",
+                text_color=fg,
+                font=theme.font(10, family=theme.FONT_BOLD),
+            ).pack(pady=(0, 8))
+
+            c.create_window(
+                x + BOX_W // 2,
+                y + BOX_H // 2,
+                window=proc_frame
+            )
 
         rows = math.ceil(n / per_row)
         content_h = 10 + rows * BOX_H + max(0, rows - 1) * GAP_V + 10
