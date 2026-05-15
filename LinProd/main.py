@@ -50,7 +50,7 @@ if __name__ == "__main__":
     root = ctk.CTk()
     root.title("LinProd — Production Line Simulator")
     root.geometry("1280x720")
-    root.minsize(960, 620)
+    root.minsize(1920, 1080)
     root.configure(fg_color=_theme.BG_MAIN)
 
     _setup_ttk_styles()
