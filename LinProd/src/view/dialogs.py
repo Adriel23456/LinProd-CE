@@ -36,116 +36,239 @@ class _ProcessDialog(_Modal):
         super().__init__(parent_widget, "ADD PROCESS", 380, 220)
 
         ctk.CTkLabel(
-            self, text="ADD PROCESS",
-            font=theme.font(16, bold=True), text_color=theme.NEON,
-        ).pack(pady=(22, 4))
+            self,
+            text="add process",
+            font=theme.font(18, bold=True),
+            text_color=theme._TEXT_MAIN,
+        ).pack(pady=(22, 10))
 
         self._name_var = ctk.StringVar()
+
         entry = ctk.CTkEntry(
-            self, textvariable=self._name_var,
+            self,
+            textvariable=self._name_var,
             placeholder_text="Process name...",
             font=theme.font(12),
-            fg_color=theme.BG_INPUT, border_color=theme.BORDER,
-            text_color=theme.TEXT, corner_radius=0, height=36,
+
+            # colores
+            fg_color=theme._BTN_ADD,
+            border_color=theme._PANEL_BD,
+            text_color=theme._TEXT_MAIN,
+            placeholder_text_color=theme._TEXT_DIM2,
+
+            # rounded
+            corner_radius=12,
+            border_width=1,
+            height=42,
         )
         entry.pack(padx=32, fill="x", pady=6)
+
         entry.focus()
         entry.bind("<Return>", lambda _e: self._ok())
 
-        self._err = ctk.CTkLabel(self, text="", text_color=theme.NEON_RED,
-                                 font=theme.font(9))
-        self._err.pack()
+        self._err = ctk.CTkLabel(
+            self,
+            text="",
+            text_color=theme.NEON_RED,
+            font=theme.font(9),
+        )
+        self._err.pack(pady=(4, 0))
 
         row = ctk.CTkFrame(self, fg_color="transparent")
-        row.pack(pady=8)
+        row.pack(pady=14)
+
+        # ADD BUTTON
         ctk.CTkButton(
-            row, text="ADD", width=110, corner_radius=0,
-            fg_color=theme.NEON, text_color=theme.BG_MAIN,
-            hover_color="#00cc7a", font=theme.font(12, bold=True),
+            row,
+            text="add",
+            width=120,
+            height=40,
+
+            corner_radius=12,
+
+            fg_color=theme._BTN_ADD,
+            hover_color=theme._BTN_ADD_H,
+
+            border_width=1,
+            border_color=theme._PANEL_BD,
+
+            text_color=theme._TEXT_MAIN,
+            font=theme.font(12, bold=True),
+
             command=self._ok,
-        ).pack(side="left", padx=6)
+        ).pack(side="left", padx=8)
+
+        # CANCEL BUTTON
         ctk.CTkButton(
-            row, text="CANCEL", width=110, corner_radius=0,
-            fg_color="transparent", text_color=theme.TEXT_DIM,
-            border_width=1, border_color=theme.BORDER,
-            hover_color=theme.BG_PANEL, font=theme.font(11),
+            row,
+            text="cancel",
+            width=120,
+            height=40,
+
+            corner_radius=12,
+
+            fg_color="transparent",
+            hover_color=theme._PANEL_BG,
+
+            border_width=1,
+            border_color=theme._PANEL_BD,
+
+            text_color=theme._TEXT_MAIN,
+            font=theme.font(11, bold=True),
+
             command=self.destroy,
-        ).pack(side="left", padx=6)
+        ).pack(side="left", padx=8)
 
     def _ok(self) -> None:
         name = self._name_var.get().strip()
+
         if not name:
             self._err.configure(text="Name cannot be empty.")
             return
+
         self.result = name
         self.destroy()
 
 
 class _TaskDialog(_Modal):
     def __init__(self, parent_widget) -> None:
-        super().__init__(parent_widget, "ADD TASK", 380, 290)
+        super().__init__(parent_widget, "ADD TASK", 400, 320)
 
         ctk.CTkLabel(
-            self, text="ADD TASK",
-            font=theme.font(16, bold=True), text_color=theme.NEON,
-        ).pack(pady=(18, 4))
+            self,
+            text="add task",
+            font=theme.font(18, bold=True),
+            text_color=theme._TEXT_MAIN,
+        ).pack(pady=(20, 10))
 
         self._name_var = ctk.StringVar()
         self._time_var = ctk.StringVar(value="1")
 
-        ctk.CTkLabel(self, text="Task name", font=theme.font(9),
-                     text_color=theme.TEXT_DIM).pack(anchor="w", padx=32)
+        # ---------- TASK NAME ----------
+        ctk.CTkLabel(
+            self,
+            text="Task name",
+            font=theme.font(10, bold=True),
+            text_color=theme._TEXT_DIM2,
+        ).pack(anchor="w", padx=32)
+
         name_entry = ctk.CTkEntry(
-            self, textvariable=self._name_var,
+            self,
+            textvariable=self._name_var,
             placeholder_text="e.g. Mix, Bake, Pack...",
-            font=theme.font(12), fg_color=theme.BG_INPUT,
-            border_color=theme.BORDER, text_color=theme.TEXT,
-            corner_radius=0, height=34,
+            font=theme.font(12),
+
+            fg_color=theme._BTN_ADD,
+            border_color=theme._PANEL_BD,
+            border_width=1,
+
+            text_color=theme._TEXT_MAIN,
+            placeholder_text_color=theme._TEXT_DIM2,
+
+            corner_radius=12,
+            height=42,
         )
-        name_entry.pack(padx=32, fill="x", pady=(0, 6))
+        name_entry.pack(padx=32, fill="x", pady=(4, 12))
+
         name_entry.focus()
 
-        ctk.CTkLabel(self, text="Processing time (cycles)", font=theme.font(9),
-                     text_color=theme.TEXT_DIM).pack(anchor="w", padx=32)
-        ctk.CTkEntry(
-            self, textvariable=self._time_var,
-            font=theme.font(12), fg_color=theme.BG_INPUT,
-            border_color=theme.BORDER, text_color=theme.TEXT,
-            corner_radius=0, height=34,
-        ).pack(padx=32, fill="x", pady=(0, 4))
+        # ---------- TIME ----------
+        ctk.CTkLabel(
+            self,
+            text="Processing time (cycles)",
+            font=theme.font(10, bold=True),
+            text_color=theme._TEXT_DIM2,
+        ).pack(anchor="w", padx=32)
 
-        self._err = ctk.CTkLabel(self, text="", text_color=theme.NEON_RED,
-                                 font=theme.font(9))
+        time_entry = ctk.CTkEntry(
+            self,
+            textvariable=self._time_var,
+            font=theme.font(12),
+
+            fg_color=theme._BTN_ADD,
+            border_color=theme._PANEL_BD,
+            border_width=1,
+
+            text_color=theme._TEXT_MAIN,
+
+            corner_radius=12,
+            height=42,
+        )
+        time_entry.pack(padx=32, fill="x", pady=(4, 10))
+
+        self._err = ctk.CTkLabel(
+            self,
+            text="",
+            text_color=theme.NEON_RED,
+            font=theme.font(9),
+        )
         self._err.pack()
 
+        # ---------- BUTTON ROW ----------
         row = ctk.CTkFrame(self, fg_color="transparent")
-        row.pack(pady=6)
+        row.pack(pady=14)
+
+        # ADD BUTTON
         ctk.CTkButton(
-            row, text="ADD", width=110, corner_radius=0,
-            fg_color=theme.NEON, text_color=theme.BG_MAIN,
-            hover_color="#00cc7a", font=theme.font(12, bold=True),
+            row,
+            text="add",
+            width=120,
+            height=40,
+
+            corner_radius=12,
+
+            fg_color=theme._BTN_ADD,
+            hover_color=theme._BTN_ADD_H,
+
+            border_width=1,
+            border_color=theme._PANEL_BD,
+
+            text_color=theme._TEXT_MAIN,
+            font=theme.font(12, bold=True),
+
             command=self._ok,
-        ).pack(side="left", padx=6)
+        ).pack(side="left", padx=8)
+
+        # CANCEL BUTTON
         ctk.CTkButton(
-            row, text="CANCEL", width=110, corner_radius=0,
-            fg_color="transparent", text_color=theme.TEXT_DIM,
-            border_width=1, border_color=theme.BORDER,
-            hover_color=theme.BG_PANEL, font=theme.font(11),
+            row,
+            text="cancel",
+            width=120,
+            height=40,
+
+            corner_radius=12,
+
+            fg_color="transparent",
+            hover_color=theme._PANEL_BG,
+
+            border_width=1,
+            border_color=theme._PANEL_BD,
+
+            text_color=theme._TEXT_MAIN,
+            font=theme.font(11, bold=True),
+
             command=self.destroy,
-        ).pack(side="left", padx=6)
+        ).pack(side="left", padx=8)
 
     def _ok(self) -> None:
         name = self._name_var.get().strip()
+
         if not name:
             self._err.configure(text="Name cannot be empty.")
             return
+
         try:
             t = int(self._time_var.get())
+
             if t < 1:
                 raise ValueError
+
         except ValueError:
-            self._err.configure(text="Time must be a positive integer.")
+            self._err.configure(
+                text="Time must be a positive integer."
+            )
             return
+
         self.result = (name, t)
         self.destroy()
 

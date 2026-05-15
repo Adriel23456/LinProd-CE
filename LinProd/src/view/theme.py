@@ -39,8 +39,6 @@ FONT_FILES = [
     "TRYToshB-Thin-BF677df27a680ff.ttf",
 ]
 
-print("\n".join([f.name for f in FONTS_DIR.iterdir()]))
-
 for font_file in FONT_FILES:
     pyglet.font.add_file(str(FONTS_DIR / font_file))
 
@@ -58,14 +56,14 @@ BG_MAIN    = "#090918"
 BG_PANEL   = "#0d0d2b"
 BG_ROW     = "#111133"
 BG_INPUT   = "#0a0a22"
-NEON       = "#00ff9f"
+NEON       = "#a8a8a8"
 NEON_BLUE  = "#00cfff"
 NEON_RED   = "#ff3f5a"
 NEON_AMBER = "#ffb300"
 BORDER     = "#1e2d5e"
 BORDER_LIT = "#2a4080"
 TEXT       = "#e8e8ff"
-TEXT_DIM   = "#6677aa"
+TEXT_DIM   = "#7c7e81"
 
 # ── Colores del nuevo diseño (imagen 2) ──────────────────────────────────────
 # Panel semitransparente oscuro para las secciones

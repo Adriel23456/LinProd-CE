@@ -14,41 +14,7 @@ if TYPE_CHECKING:
     from src.model.process import Process
 
 
-def _load_bg_image(parent, size: tuple[int, int]) -> ctk.CTkLabel | None:
-    """
-    Carga la imagen de fondo y la retorna como CTkLabel.
-    Coloca la imagen en el parent usando place() para que cubra todo.
-
-    Pasos para usarla:
-    1. Pon el archivo de fondo en la misma carpeta que theme.py
-       con el nombre 'background.png' (o ajusta BG_IMAGE_PATH en theme.py).
-    2. Esta función se llama automáticamente en _build().
-    3. El label se pone en place(x=0, y=0, relwidth=1, relheight=1)
-       para que quede detrás de todos los demás widgets.
-    """
-    # Intentamos cargar desde theme.BG_IMAGE_PATH si existe, si no buscamos background.png
-    bg_path = getattr(theme, "BG_IMAGE_PATH", None)
-    if bg_path is None:
-        import pathlib
-        bg_path = pathlib.Path(__file__).parent / "background.png"
-
-    try:
-        from PIL import Image
-        img_pil = Image.open(bg_path).resize(size, Image.LANCZOS)
-        img = ctk.CTkImage(
-            light_image=img_pil,
-            dark_image=img_pil,
-            size=size,
-        )
-        lbl = ctk.CTkLabel(parent, image=img, text="")
-        lbl._bg_img = img  
-        return lbl
-    except Exception:
-        return None
-
-
 def _load_logo(parent, size: tuple[int, int] = (40, 40)) -> ctk.CTkLabel | None:
-    """Return a CTkLabel with the logo image, or None if unavailable."""
     if not theme.LOGO_PATH.exists():
         return None
     try:
@@ -59,21 +25,15 @@ def _load_logo(parent, size: tuple[int, int] = (40, 40)) -> ctk.CTkLabel | None:
             size=size,
         )
         lbl = ctk.CTkLabel(parent, image=img, text="")
-        lbl._logo_img = img  # prevent GC
+        lbl._logo_img = img
         return lbl
     except Exception:
         return None
 
 
-
-
 class SetupView(ctk.CTkFrame):
     """
-    Production-line configuration interface — rediseñada (imagen 2).
-
-    Estructura:
-      - Columna izquierda: branding + load/save JSON
-      - Columna derecha:   processes, tasks, line preview, start simulation
+    Production-line configuration interface.
 
     Diagram attributes (V-CD-06):
         process_form : CTkFrame           (process-tiles section)
@@ -100,38 +60,24 @@ class SetupView(ctk.CTkFrame):
         self._proc_tiles_canvas: tk.Canvas | None = None
         self._proc_tiles_frame:  tk.Frame  | None = None
 
+        # Fast-recolor cache: proc.name -> {"tile", "name_lbl", "task_lbl"}
+        self._tile_widgets: dict[str, dict] = {}
+
         self._build()
 
     # ── Layout ───────────────────────────────────────────────────────────────
 
     def _build(self) -> None:
-        # ── Fondo de imagen ──────────────────────────────────────────────────
-        # Intentamos poner la imagen de fondo. Si no existe el archivo,
-        # simplemente se usa el color BG_MAIN del tema como fallback.
-        #
-        # Para activar el fondo:
-        #   1. Copia tu imagen a  src/view/background.png  (o la ruta que
-        #      tengas en theme.BG_IMAGE_PATH).
-        #   2. La imagen se redimensiona automáticamente a 1400×900 px.
-        #      Ajusta el tuple si tu ventana tiene otro tamaño.
-        #
-        bg_lbl = _load_bg_image(self, size=(1400, 900))
-        if bg_lbl:
-            bg_lbl.place(x=0, y=0, relwidth=1, relheight=1)
-        else:
-            # fallback: color sólido oscuro del tema
-            self.configure(fg_color=theme.BG_MAIN)
+        
+        self.configure(fg_color=theme.BG_MAIN)
 
-        # ── Layout principal: dos columnas ───────────────────────────────────
         self.columnconfigure(0, weight=0, minsize=300)
         self.columnconfigure(1, weight=1)
         self.rowconfigure(0, weight=1)
 
-        # Columna izquierda: branding + botones JSON
         left_col = ctk.CTkFrame(self, fg_color="transparent")
         left_col.grid(row=0, column=0, sticky="nsew", padx=(24, 12), pady=24)
 
-        # Columna derecha: secciones
         right_col = ctk.CTkFrame(self, fg_color="transparent")
         right_col.grid(row=0, column=1, sticky="nsew", padx=(12, 24), pady=24)
         right_col.rowconfigure(0, weight=0)
@@ -150,12 +96,11 @@ class SetupView(ctk.CTkFrame):
 
     def _build_left_panel(self, parent: ctk.CTkFrame) -> None:
         parent.rowconfigure(0, weight=0)
-        parent.rowconfigure(1, weight=1)
+        parent.rowconfigure(1, weight=0)
         parent.rowconfigure(2, weight=0)
         parent.rowconfigure(3, weight=0)
         parent.columnconfigure(0, weight=1)
 
-        # Créditos del equipo
         credits_frame = ctk.CTkFrame(
             parent, fg_color=theme._PANEL_BG, corner_radius=14,
             border_width=1, border_color=theme._PANEL_BD,
@@ -165,38 +110,47 @@ class SetupView(ctk.CTkFrame):
         ctk.CTkLabel(
             credits_frame,
             text="modelación de hardware y software orientado a objetos",
-            font=theme.font(9), text_color=theme._TEXT_DIM2,
+            font=theme.font(9),
+            text_color=theme._TEXT_DIM2,
             wraplength=240,
-        ).pack(anchor="w", padx=16, pady=(12, 2))
+            justify="center",
+        ).pack(pady=(12, 2))
+
         ctk.CTkLabel(
             credits_frame,
             text="chaves · duarte · madrigal · molina",
-            font=theme.font(10, bold=True), text_color=theme._TEXT_MAIN,
-        ).pack(anchor="w", padx=16, pady=(0, 12))
+            font=theme.font(10, bold=True),
+            text_color=theme._TEXT_MAIN,
+            justify="center",
+        ).pack(pady=(0, 12))
 
-        # Título grande
         title_frame = ctk.CTkFrame(
-            parent, fg_color=theme._PANEL_BG, corner_radius=14,
-            border_width=1, border_color=theme._PANEL_BD,
+            parent,
+            fg_color=theme._PANEL_BG,
+            corner_radius=14,
+            border_width=1,
+            border_color=theme._PANEL_BD,
+            height=365,
+            width=300,
         )
         title_frame.grid(row=1, column=0, sticky="nsew", pady=(0, 16))
+        title_frame.pack_propagate(False)
 
         ctk.CTkLabel(
             title_frame,
             text="production\nline",
-            font=ctk.CTkFont(family=theme.font(14, "bold"), size=52),
+            font=theme.font(40, family=theme.FONT_BOLD),
             text_color=theme._TITLE_BIG,
             justify="left",
         ).pack(anchor="w", padx=20, pady=(24, 0))
         ctk.CTkLabel(
             title_frame,
             text="simulator",
-            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=36),
+            font=theme.font(36, family=theme.FONT_BOLD),
             text_color=theme._TEXT_MAIN,
-            justify="left",
+            justify="right",
         ).pack(anchor="w", padx=20, pady=(0, 24))
 
-        # Botón load JSON
         load_frame = ctk.CTkFrame(
             parent, fg_color=theme._PANEL_BG, corner_radius=14,
             border_width=1, border_color=theme._PANEL_BD,
@@ -223,7 +177,6 @@ class SetupView(ctk.CTkFrame):
             command=self._load_json,
         ).grid(row=0, column=1, rowspan=2, padx=(8, 0))
 
-        # Botón save JSON
         save_frame = ctk.CTkFrame(
             parent, fg_color=theme._PANEL_BG, corner_radius=14,
             border_width=1, border_color=theme._PANEL_BD,
@@ -252,14 +205,11 @@ class SetupView(ctk.CTkFrame):
     # ── Columna derecha: secciones ────────────────────────────────────────────
 
     def _build_process_section_new(self, parent: ctk.CTkFrame) -> None:
-        """Sección 'processes' con botón +add process."""
         container = ctk.CTkFrame(
             parent, fg_color=theme._PANEL_BG, corner_radius=14,
             border_width=1, border_color=theme._PANEL_BD,
         )
         container.grid(row=0, column=0, sticky="ew", pady=(0, 10))
-
-        # Guardamos referencia como process_form para compatibilidad con el controlador
         self.process_form = container
 
         hdr = ctk.CTkFrame(container, fg_color="transparent")
@@ -276,7 +226,6 @@ class SetupView(ctk.CTkFrame):
             command=self._add_process,
         ).pack(side="right")
 
-        # Canvas de tiles de procesos (scrollable horizontal)
         canvas_row = tk.Frame(container, bg=theme._PANEL_BG)
         canvas_row.pack(fill="x", padx=16, pady=(0, 12))
 
@@ -305,7 +254,6 @@ class SetupView(ctk.CTkFrame):
         )
 
     def _build_task_section_new(self, parent: ctk.CTkFrame) -> None:
-        """Sección 'tasks' con botón +add tasks."""
         container = ctk.CTkFrame(
             parent, fg_color=theme._PANEL_BG, corner_radius=14,
             border_width=1, border_color=theme._PANEL_BD,
@@ -341,11 +289,11 @@ class SetupView(ctk.CTkFrame):
             scrollbar_button_color=theme._PANEL_BD,
             scrollbar_button_hover_color=theme._BTN_ADD_H,
             height=120,
+            orientation="horizontal",
         )
         self.task_list.pack(fill="x", expand=False, padx=12, pady=(0, 12))
 
     def _build_preview_section_new(self, parent: ctk.CTkFrame) -> None:
-        """Sección 'line preview'."""
         container = ctk.CTkFrame(
             parent, fg_color=theme._PANEL_BG, corner_radius=14,
             border_width=1, border_color=theme._PANEL_BD,
@@ -375,7 +323,6 @@ class SetupView(ctk.CTkFrame):
         self.line_canvas.configure(yscrollcommand=v_scroll.set)
 
     def _build_footer_new(self, parent: ctk.CTkFrame) -> None:
-        """Fila inferior con error label y botón start simulation."""
         footer = ctk.CTkFrame(parent, fg_color="transparent")
         footer.grid(row=3, column=0, sticky="ew", pady=(4, 0))
         footer.columnconfigure(0, weight=1)
@@ -398,83 +345,10 @@ class SetupView(ctk.CTkFrame):
     # ── Public render methods (called by controller) ──────────────────────────
 
     def render_process_form(self) -> None:
-        if self._proc_tiles_frame is None or not self.controller:
-            return
-        for w in self._proc_tiles_frame.winfo_children():
-            w.destroy()
-
-        pl    = self.controller._production_line
-        total = len(pl.processes)
-        for idx, proc in enumerate(pl.processes):
-            self._render_process_tile(proc, idx, total)
-
-        self._proc_tiles_frame.update_idletasks()
-        if self._proc_tiles_canvas:
-            self._sync_proc_tiles_scrollregion()
-        self._update_canvas_preview(pl.processes)
-
-    def _sync_proc_tiles_scrollregion(self) -> None:
-        if self._proc_tiles_canvas is None:
-            return
-        c = self._proc_tiles_canvas
-        c.update_idletasks()
-        bbox = c.bbox("all")
-        if not bbox:
-            c.configure(scrollregion=(0, 0, c.winfo_width(), c.winfo_height()))
-            c.xview_moveto(0)
-            return
-
-        x1, y1, x2, y2 = bbox
-        view_w = max(1, c.winfo_width())
-        view_h = max(1, c.winfo_height())
-        content_w = max(0, x2 - x1)
-        content_h = max(0, y2 - y1)
-
-        region_w = max(view_w, content_w)
-        region_h = max(view_h, content_h)
-        c.configure(scrollregion=(0, 0, region_w, region_h))
-        if content_w <= view_w + 2:
-            c.xview_moveto(0)
-
-    def _proc_tiles_has_overflow(self) -> bool:
-        if self._proc_tiles_canvas is None:
-            return False
-        c = self._proc_tiles_canvas
-        c.update_idletasks()
-        bbox = c.bbox("all")
-        if not bbox:
-            return False
-        x1, _y1, x2, _y2 = bbox
-        content_w = max(0, x2 - x1)
-        return content_w > (c.winfo_width() + 2)
-
-    def _on_proc_tiles_xscroll(self, *args) -> None:
-        if self._proc_tiles_canvas is None:
-            return
-        c = self._proc_tiles_canvas
-
-        if not self._proc_tiles_has_overflow():
-            c.xview_moveto(0)
-            return
-
-        if len(args) >= 3 and args[0] == "scroll":
-            units = int(args[1])
-            if units < 0:
-                left, _right = c.xview()
-                if left <= 0.0:
-                    c.xview_moveto(0)
-                    return
-            c.xview(*args)
-            return
-
-        if len(args) >= 2 and args[0] == "moveto":
-            frac = max(0.0, min(1.0, float(args[1])))
-            c.xview_moveto(frac)
-            if c.xview()[0] < 0.001:
-                c.xview_moveto(0)
-            return
-
-        c.xview(*args)
+        """Called by controller after any structural change to the process list."""
+        self._render_proc_tiles()
+        if self.controller:
+            self._update_canvas_preview(self.controller._production_line.processes)
 
     def render_task_list(self, processes) -> None:
         if self.task_list is None or self._selected_proc is None:
@@ -495,102 +369,163 @@ class SetupView(ctk.CTkFrame):
         if self._err_label:
             self._err_label.configure(text=msg)
 
+    # ── Process tiles: full rebuild vs fast recolor ───────────────────────────
+
+    def _render_proc_tiles(self) -> None:
+        """Full rebuild of the tile row — call only on structural changes."""
+        if self._proc_tiles_frame is None:
+            return
+
+        for w in self._proc_tiles_frame.winfo_children():
+            w.destroy()
+        self._tile_widgets = {}
+
+        if not self.controller:
+            return
+
+        pl    = self.controller._production_line
+        total = len(pl.processes)
+        for idx, proc in enumerate(pl.processes):
+            self._render_process_tile(proc, idx, total)
+
+        self._proc_tiles_frame.update_idletasks()
+        if self._proc_tiles_canvas:
+            self._sync_proc_tiles_scrollregion()
+
+    def _refresh_tile_colors(self) -> None:
+        """Only recolor existing tiles — no destroy/recreate. Instant update."""
+        for proc_name, refs in self._tile_widgets.items():
+            is_sel = (proc_name == self._selected_proc)
+            hl = theme.NEON if is_sel else theme._PANEL_BD
+
+            refs["tile"].configure(border_color=hl)
+
     # ── Process tile ──────────────────────────────────────────────────────────
 
     def _render_process_tile(self, proc, idx: int, total: int) -> None:
         is_sel = (proc.name == self._selected_proc)
-        bg     = theme.NEON if is_sel else theme._BTN_ADD
+        bg     = theme.NEON    if is_sel else theme._BTN_ADD
         fg     = theme.BG_MAIN if is_sel else theme._TEXT_MAIN
-        hl     = theme.NEON if is_sel else theme._PANEL_BD
+        hl     = theme.NEON    if is_sel else theme._PANEL_BD
 
-        tile = tk.Frame(
-            self._proc_tiles_frame, bg=bg,
-            highlightthickness=1, highlightbackground=hl,
+        tile = ctk.CTkFrame(
+            self._proc_tiles_frame,
+            fg_color=bg,
+            border_color=hl,
+            border_width=1,
+            corner_radius=12,
         )
         tile.pack(side="left", padx=4, pady=6)
 
-        name_lbl = tk.Label(
-            tile, text=proc.name, bg=bg, fg=fg,
-            font=(theme.FONT_FAMILY, 10, "bold"),
-            padx=12, pady=5,
+        name_lbl = ctk.CTkLabel(
+            tile, text=proc.name, text_color=fg,
+            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=10, weight="bold"),
         )
-        name_lbl.pack()
+        name_lbl.pack(padx=12, pady=(8, 0))
 
-        task_lbl = tk.Label(
-            tile, text=f"{len(proc.tasks)} task(s)", bg=bg, fg=fg,
-            font=(theme.FONT_FAMILY, 9),
-            padx=12, pady=2,
+        task_lbl = ctk.CTkLabel(
+            tile, text=f"{len(proc.tasks)} task(s)", text_color=fg,
+            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=9),
         )
-        task_lbl.pack()
+        task_lbl.pack(padx=12, pady=(2, 0))
 
-        btn_row = tk.Frame(tile, bg=bg)
-        btn_row.pack(padx=6, pady=(2, 6))
+        btn_row = ctk.CTkFrame(tile, fg_color="transparent")
+        btn_row.pack(padx=6, pady=(4, 8))
 
-        tk.Button(
-            btn_row, text="◄", bg=bg, fg=theme._ACCENT,
-            font=(theme.FONT_FAMILY, 9), relief="flat", bd=0,
+        ctk.CTkButton(
+            btn_row, text="◄", width=28, height=24,
+            fg_color="transparent", text_color=theme._ACCENT,
+            hover_color=theme._PANEL_BD,
+            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=9),
             cursor="hand2" if idx > 0 else "arrow",
             state="normal" if idx > 0 else "disabled",
             command=lambda n=proc.name, i=idx: self._reorder_proc(n, i - 1),
         ).pack(side="left", padx=2)
 
-        tk.Button(
-            btn_row, text="✕", bg=bg, fg=theme.NEON_RED,
-            font=(theme.FONT_FAMILY, 9), relief="flat", bd=0,
+        ctk.CTkButton(
+            btn_row, text="✕", width=28, height=24,
+            fg_color="transparent", text_color=theme.NEON_RED,
+            hover_color=theme._PANEL_BD,
+            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=9),
             cursor="hand2",
             command=lambda n=proc.name: self._remove_process(n),
         ).pack(side="left", padx=2)
 
-        tk.Button(
-            btn_row, text="►", bg=bg, fg=theme._ACCENT,
-            font=(theme.FONT_FAMILY, 9), relief="flat", bd=0,
+        ctk.CTkButton(
+            btn_row, text="►", width=28, height=24,
+            fg_color="transparent", text_color=theme._ACCENT,
+            hover_color=theme._PANEL_BD,
+            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=9),
             cursor="hand2" if idx < total - 1 else "arrow",
             state="normal" if idx < total - 1 else "disabled",
             command=lambda n=proc.name, i=idx: self._reorder_proc(n, i + 1),
         ).pack(side="left", padx=2)
 
+        # Store refs for fast recoloring
+        self._tile_widgets[proc.name] = {
+            "tile":     tile,
+            "name_lbl": name_lbl,
+            "task_lbl": task_lbl,
+        }
+
+        select_cmd = lambda _e, n=proc.name: self._select_process(n)
         for widget in (tile, name_lbl, task_lbl):
-            widget.bind("<Button-1>", lambda _e, n=proc.name: self._select_process(n))
+            widget.bind("<Button-1>", select_cmd)
             widget.configure(cursor="hand2")
 
     # ── Task row ──────────────────────────────────────────────────────────────
 
     def _render_task_row(self, proc_name: str, task, idx: int, total: int) -> None:
-        row = ctk.CTkFrame(self.task_list, fg_color=theme._BTN_ADD, corner_radius=8,
-                           border_width=1, border_color=theme._PANEL_BD)
-        row.pack(fill="x", pady=2, padx=2)
+        tile = ctk.CTkFrame(
+            self.task_list,
+            fg_color=theme._BTN_ADD,
+            corner_radius=10,
+            border_width=1,
+            border_color=theme._PANEL_BD,
+        )
+        tile.pack(side="left", padx=6, pady=6)
 
         ctk.CTkLabel(
-            row, text=task.name, font=theme.font(12, bold=True), text_color=theme._TEXT_MAIN,
-        ).pack(side="left", padx=10, pady=4)
-        ctk.CTkLabel(
-            row, text=f"t={task.processing_time}",
-            font=theme.font(10), text_color=theme._TEXT_DIM2,
-        ).pack(side="left")
+            tile,
+            text=task.name,
+            fg_color="transparent",
+            text_color=theme._TEXT_MAIN,
+            font=theme.font(10, bold=True),
+        ).pack(padx=14, pady=(8, 2))
 
-        ctrl = ctk.CTkFrame(row, fg_color="transparent")
-        ctrl.pack(side="right", padx=6)
+        ctk.CTkLabel(
+            tile,
+            text=f"t={task.processing_time}",
+            fg_color="transparent",
+            text_color=theme._TEXT_DIM2,
+            font=theme.font(9),
+        ).pack(padx=10, pady=(0, 4))
+
+        btn_row = ctk.CTkFrame(tile, fg_color="transparent")
+        btn_row.pack(padx=6, pady=(2, 8))
 
         ctk.CTkButton(
-            ctrl, text="↑", width=28, corner_radius=6, height=26,
-            fg_color=theme._PANEL_BG, text_color=theme._ACCENT,
-            hover_color=theme._PANEL_BD, font=theme.font(11),
+            btn_row, text="◄", width=28, height=26, corner_radius=6,
+            fg_color=theme._PANEL_BG, hover_color=theme._PANEL_BD,
+            text_color=theme._ACCENT, font=theme.font(11),
             state="normal" if idx > 0 else "disabled",
             command=lambda tn=task.name, i=idx: self._reorder_task(tn, i - 1),
-        ).pack(side="left", padx=1)
+        ).pack(side="left", padx=2)
+
         ctk.CTkButton(
-            ctrl, text="↓", width=28, corner_radius=6, height=26,
-            fg_color=theme._PANEL_BG, text_color=theme._ACCENT,
-            hover_color=theme._PANEL_BD, font=theme.font(11),
+            btn_row, text="✕", width=28, height=26, corner_radius=6,
+            fg_color="transparent", hover_color=theme._PANEL_BG,
+            text_color=theme.NEON_RED, font=theme.font(11),
+            command=lambda tn=task.name: self._remove_task(tn),
+        ).pack(side="left", padx=2)
+
+        ctk.CTkButton(
+            btn_row, text="►", width=28, height=26, corner_radius=6,
+            fg_color=theme._PANEL_BG, hover_color=theme._PANEL_BD,
+            text_color=theme._ACCENT, font=theme.font(11),
             state="normal" if idx < total - 1 else "disabled",
             command=lambda tn=task.name, i=idx: self._reorder_task(tn, i + 1),
-        ).pack(side="left", padx=1)
-        ctk.CTkButton(
-            ctrl, text="✕", width=28, corner_radius=6, height=26,
-            fg_color="transparent", text_color=theme.NEON_RED,
-            hover_color=theme._PANEL_BG, font=theme.font(11),
-            command=lambda tn=task.name: self._remove_task(tn),
-        ).pack(side="left", padx=1)
+        ).pack(side="left", padx=2)
 
     # ── Snake-pattern canvas preview ──────────────────────────────────────────
 
@@ -606,22 +541,22 @@ class SetupView(ctk.CTkFrame):
         if not processes:
             c.create_text(
                 10, 20, anchor="w", text="No processes yet.",
-                fill=_TEXT_DIM2, font=(theme.FONT_FAMILY, 9),
+                fill=theme._TEXT_DIM2, font=(theme.FONT_FAMILY, 9),
             )
             c.configure(scrollregion=(0, 0, W, H))
             return
 
         n = len(processes)
 
-        BOX_W   = 110
-        BOX_H   = 44
-        GAP_H   = 14
-        GAP_V   = 38
-        MARGIN  = 18
+        BOX_W  = 110
+        BOX_H  = 44
+        GAP_H  = 14
+        GAP_V  = 38
+        MARGIN = 18
 
-        avail_w  = W - 2 * MARGIN
-        per_row  = max(1, (avail_w + GAP_H) // (BOX_W + GAP_H))
-        per_row  = min(per_row, n)
+        avail_w = W - 2 * MARGIN
+        per_row = max(1, (avail_w + GAP_H) // (BOX_W + GAP_H))
+        per_row = min(per_row, n)
 
         positions: list[tuple[int, int]] = []
         for i in range(n):
@@ -671,7 +606,7 @@ class SetupView(ctk.CTkFrame):
                      theme.NEON     if i == 0 else
                      theme.NEON_RED if i == n - 1 else
                      theme._BTN_ADD)
-            fg    = theme._BG_MAIN if color in (theme.NEON, theme.NEON_RED) else theme._TEXT_MAIN
+            fg    = theme.BG_MAIN if color in (theme.NEON, theme.NEON_RED) else theme._TEXT_MAIN
             c.create_rectangle(x, y, x + BOX_W, y + BOX_H,
                                fill=color, outline=theme._PANEL_BD, width=1)
             c.create_text(x + BOX_W // 2, y + BOX_H // 2 - 8,
@@ -685,6 +620,69 @@ class SetupView(ctk.CTkFrame):
         content_h = 10 + rows * BOX_H + max(0, rows - 1) * GAP_V + 10
         c.configure(scrollregion=(0, 0, W, max(H, content_h)))
 
+    # ── Scrollbar helpers ─────────────────────────────────────────────────────
+
+    def _sync_proc_tiles_scrollregion(self) -> None:
+        if self._proc_tiles_canvas is None:
+            return
+        c = self._proc_tiles_canvas
+        c.update_idletasks()
+        bbox = c.bbox("all")
+        if not bbox:
+            c.configure(scrollregion=(0, 0, c.winfo_width(), c.winfo_height()))
+            c.xview_moveto(0)
+            return
+
+        x1, y1, x2, y2 = bbox
+        view_w    = max(1, c.winfo_width())
+        view_h    = max(1, c.winfo_height())
+        content_w = max(0, x2 - x1)
+        content_h = max(0, y2 - y1)
+        region_w  = max(view_w, content_w)
+        region_h  = max(view_h, content_h)
+        c.configure(scrollregion=(0, 0, region_w, region_h))
+        if content_w <= view_w + 2:
+            c.xview_moveto(0)
+
+    def _proc_tiles_has_overflow(self) -> bool:
+        if self._proc_tiles_canvas is None:
+            return False
+        c = self._proc_tiles_canvas
+        c.update_idletasks()
+        bbox = c.bbox("all")
+        if not bbox:
+            return False
+        x1, _y1, x2, _y2 = bbox
+        return max(0, x2 - x1) > (c.winfo_width() + 2)
+
+    def _on_proc_tiles_xscroll(self, *args) -> None:
+        if self._proc_tiles_canvas is None:
+            return
+        c = self._proc_tiles_canvas
+
+        if not self._proc_tiles_has_overflow():
+            c.xview_moveto(0)
+            return
+
+        if len(args) >= 3 and args[0] == "scroll":
+            units = int(args[1])
+            if units < 0:
+                left, _right = c.xview()
+                if left <= 0.0:
+                    c.xview_moveto(0)
+                    return
+            c.xview(*args)
+            return
+
+        if len(args) >= 2 and args[0] == "moveto":
+            frac = max(0.0, min(1.0, float(args[1])))
+            c.xview_moveto(frac)
+            if c.xview()[0] < 0.001:
+                c.xview_moveto(0)
+            return
+
+        c.xview(*args)
+
     # ── Button / event handlers ───────────────────────────────────────────────
 
     def _select_process(self, name: str) -> None:
@@ -693,8 +691,9 @@ class SetupView(ctk.CTkFrame):
             self._sel_label.configure(
                 text=f"Tasks for:  {name}", text_color=theme._TEXT_MAIN,
             )
+        # Fast recolor only — no rebuild
+        self._refresh_tile_colors()
         if self.controller:
-            self.render_process_form()
             self.render_task_list(self.controller._production_line.processes)
 
     def _add_process(self) -> None:
@@ -705,6 +704,10 @@ class SetupView(ctk.CTkFrame):
             return
         self.controller.on_add_process(name)
         self._clear_error()
+        # Structural change → full rebuild
+        self._render_proc_tiles()
+        if self.controller:
+            self._update_canvas_preview(self.controller._production_line.processes)
 
     def _remove_process(self, name: str) -> None:
         if not self.controller:
@@ -719,10 +722,19 @@ class SetupView(ctk.CTkFrame):
                 for w in self.task_list.winfo_children():
                     w.destroy()
         self.controller.on_remove_process(name)
+        # Structural change → full rebuild
+        self._render_proc_tiles()
+        if self.controller:
+            self._update_canvas_preview(self.controller._production_line.processes)
 
     def _reorder_proc(self, name: str, new_idx: int) -> None:
+        if not self.controller:
+            return
+        self.controller.on_reorder_process(name, new_idx)
+        # Structural change → full rebuild
+        self._render_proc_tiles()
         if self.controller:
-            self.controller.on_reorder_process(name, new_idx)
+            self._update_canvas_preview(self.controller._production_line.processes)
 
     def _add_task(self) -> None:
         if not self.controller or not self._selected_proc:
@@ -769,6 +781,8 @@ class SetupView(ctk.CTkFrame):
                 for w in self.task_list.winfo_children():
                     w.destroy()
             self._clear_error()
+            self._render_proc_tiles()
+            self._update_canvas_preview(self.controller._production_line.processes)
         except Exception as exc:
             messagebox.showerror("Load error", str(exc))
 
