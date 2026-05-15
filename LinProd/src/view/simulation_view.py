@@ -366,7 +366,7 @@ class SimulationView(ctk.CTkFrame, Observer):
         self._inject_btn = ctk.CTkButton(
             sidebar, text="+ inject",
             height=40, corner_radius=10,
-            fg_color=theme.NEON,
+            fg_color=theme._BTN_ADD,
             hover_color=theme._BTN_ADD_H,
             text_color=theme.BG_MAIN,
             font=theme.font(13, family=theme.FONT_BOLD),
@@ -719,13 +719,13 @@ class SimulationView(ctk.CTkFrame, Observer):
                 self._step_btn.configure(state="normal", fg_color=theme.NEON,
                                          text_color=theme.BG_MAIN)
             if self._inject_btn:
-                self._inject_btn.configure(state="normal")
+                self._inject_btn.configure(state="normal", fg_color=theme.NEON)
         else:
             if self._step_btn:
                 self._step_btn.configure(state="disabled", fg_color=theme._BTN_ADD,
                                          text_color=theme._TEXT_MAIN)
             if self._inject_btn:
-                self._inject_btn.configure(state="disabled")
+                self._inject_btn.configure(state="disabled", fg_color=theme._BTN_ADD)
         self._update_play_btn()
 
     def _reset(self) -> None:
