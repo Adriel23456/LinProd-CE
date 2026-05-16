@@ -1,0 +1,55 @@
+{
+  "production_line": {
+    "initial_products": 5,
+    "processes": [
+      {
+        "number": 1,
+        "name": "P1",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Tarea1",
+            "processing_time": 1
+          },
+          {
+            "number": 2,
+            "name": "Tarea2",
+            "processing_time": 1
+          }
+        ]
+      },
+      {
+        "number": 2,
+        "name": "P2",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Tarea3",
+            "processing_time": 2
+          },
+          {
+            "number": 2,
+            "name": "Tarea4",
+            "processing_time": 2
+          }
+        ]
+      },
+      {
+        "number": 3,
+        "name": "P3",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Tarea5",
+            "processing_time": 1
+          },
+          {
+            "number": 2,
+            "name": "Tarea6",
+            "processing_time": 1
+          }
+        ]
+      }
+    ]
+  }
+}

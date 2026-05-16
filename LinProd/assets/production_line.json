@@ -1,0 +1,80 @@
+{
+  "production_line": {
+    "processes": [
+      {
+        "number": 1,
+        "name": "Ingredients Gathering",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Getting Water",
+            "processing_time": 1
+          },
+          {
+            "number": 2,
+            "name": "Getting Dough",
+            "processing_time": 2
+          },
+          {
+            "number": 3,
+            "name": "Getting Eggs",
+            "processing_time": 1
+          }
+        ]
+      },
+      {
+        "number": 2,
+        "name": "Mixing",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Weighing Ingredients",
+            "processing_time": 2
+          },
+          {
+            "number": 2,
+            "name": "Blending",
+            "processing_time": 3
+          }
+        ]
+      },
+      {
+        "number": 3,
+        "name": "Baking",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Preheating Oven",
+            "processing_time": 2
+          },
+          {
+            "number": 2,
+            "name": "Baking Cake",
+            "processing_time": 5
+          },
+          {
+            "number": 3,
+            "name": "Cooling",
+            "processing_time": 2
+          }
+        ]
+      },
+      {
+        "number": 4,
+        "name": "Packaging",
+        "tasks": [
+          {
+            "number": 1,
+            "name": "Boxing",
+            "processing_time": 1
+          },
+          {
+            "number": 2,
+            "name": "Labeling",
+            "processing_time": 1
+          }
+        ]
+      }
+    ]
+  }
+}
