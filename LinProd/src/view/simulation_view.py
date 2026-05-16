@@ -1,3 +1,43 @@
+"""
+simulation_view.py
+------------------
+Live simulation screen shown after setup is confirmed.
+
+SimulationView implements both CTkFrame (UI container) and Observer (event
+receiver). It subscribes to the shared EventDispatcher at construction time
+and translates every SimulationEvent into a targeted UI update — no polling.
+
+Layout (dashboard style):
+  ┌─────────────────────────────────────────┬──────────────────┐
+  │  title          [  t = 0  ]  [set up] [report]            │  top bar
+  ├─────────────────────────────────────────┤  step mode       │
+  │                                         │  [ ] ── [step]   │
+  │   canvas (scrollable, process boxes)    │  [+ inject]      │
+  │                                         │  divider         │
+  │                                         │  event log       │
+  ├─────────────────────────────────────────┤  (scrollable)    │
+  │  [play/pause]  [reset]   speed slider   │                  │
+  └─────────────────────────────────────────┴──────────────────┘
+
+Observer thread-safety:
+  update() is called from the SimulationEngine background thread. All Tkinter
+  widget operations are marshalled to the main thread via self.after(0, ...).
+  The _log() and _handle_event() methods include winfo_exists() guards to
+  prevent crashes if the view is destroyed while the engine is still ticking.
+
+Key rendering optimisation:
+  Canvas redraws are coalesced via _schedule_redraw() / after_idle(). Multiple
+  events arriving in the same tick trigger only one canvas repaint.
+  Log messages are buffered in _log_buffer and flushed at most once per 16 ms
+  to prevent Tkinter text-widget thrashing on high-frequency runs.
+
+Relationships:
+    - Implements: Observer (subscribed in __init__)
+    - Created by: MainController.start_simulation() and _go_back_to_sim()
+    - Controller injected after creation: SimulationController
+    - Reads engine state: via controller._engine (for canvas drawing and snapshot)
+"""
+
 from __future__ import annotations
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -17,6 +57,21 @@ if TYPE_CHECKING:
 
 
 def _load_logo(parent, size: tuple[int, int] = (36, 36)) -> ctk.CTkLabel | None:
+    """
+    Create a CTkLabel containing the LOGO.png asset, or return None if unavailable.
+
+    Parameters
+    ----------
+    parent : ctk.CTkWidget
+        Parent widget for the returned label.
+    size : tuple[int, int]
+        Desired (width, height) in pixels.
+
+    Returns
+    -------
+    ctk.CTkLabel | None
+        Ready-to-pack label, or None if PIL is not installed or file not found.
+    """
     if not theme.LOGO_PATH.exists():
         return None
     try:
@@ -27,14 +82,28 @@ def _load_logo(parent, size: tuple[int, int] = (36, 36)) -> ctk.CTkLabel | None:
             size=size,
         )
         lbl = ctk.CTkLabel(parent, image=img, text="")
-        lbl._logo_img = img
+        lbl._logo_img = img   # prevent GC of the CTkImage reference
         return lbl
     except Exception:
         return None
 
 
 def _rounded_rect(canvas: tk.Canvas, x1, y1, x2, y2, r=12, **kw):
-    """Draw a filled rounded rectangle on a tk.Canvas."""
+    """
+    Draw a filled rounded rectangle on a tk.Canvas using a smooth polygon.
+
+    Parameters
+    ----------
+    canvas : tk.Canvas
+        Target canvas.
+    x1, y1, x2, y2 : int | float
+        Bounding box coordinates.
+    r : int
+        Corner radius in pixels.
+    **kw
+        Additional keyword arguments forwarded to canvas.create_polygon
+        (e.g. fill, outline, width).
+    """
     pts = [
         x1 + r, y1,
         x2 - r, y1,
@@ -55,29 +124,52 @@ def _rounded_rect(canvas: tk.Canvas, x1, y1, x2, y2, r=12, **kw):
 
 class SimulationView(ctk.CTkFrame, Observer):
     """
-    Live simulation view — layout matches the dashboard mockup:
+    Live simulation screen that implements Observer to receive engine events.
 
-      ┌─────────────────────────────────────────┬──────────────────┐
-      │  title          [  t = 0  ]   [set up] [report]           │  ← top bar
-      ├─────────────────────────────────────────┤  step mode       │
-      │                                         │  [ ] ── [step]   │
-      │   canvas (scrollable, process boxes)    │  [+ inject]      │
-      │                                         │                  │
-      │                                         │  event log       │
-      │                                         │  ┌────────────┐  │
-      ├─────────────────────────────────────────┤  │ log text   │  │
-      │  [play]   [reset]   speed ─────── 50ms  │  └────────────┘  │
-      └─────────────────────────────────────────┴──────────────────┘
+    Subscribes to the shared EventDispatcher at construction time. Each
+    SimulationEvent received in update() is marshalled to the main thread via
+    after(0, _handle_event) and dispatched to the appropriate render or log method.
+
+    Canvas drawing:
+      _redraw_canvas() draws the complete pipeline state on every redraw:
+      one rounded-rect process box per process, one task row per task, a
+      coloured status dot (red=busy, amber=queued, grey=idle), and arrows
+      between processes. Box widths are computed dynamically from font metrics
+      and cached in _box_widths_cache until a reset clears them.
+
+    Play-button state machine:
+      "play"   → simulation not yet started (on_run will be called)
+      "pause"  → simulation is running (on_pause will be called)
+      "resume" → simulation started but currently paused (on_resume will be called)
+      disabled → step mode is active (step button is used instead)
+
+    Diagram attributes (V-CD-08):
+        line_canvas  : tk.Canvas        — scrollable process diagram
+        status_panel : ctk.CTkFrame     — reserved (diagram compliance)
+        speed_slider : ctk.CTkSlider    — tick interval control
+
+    Relationships:
+        - Implements: Observer (subscribed in __init__)
+        - Created by: MainController.start_simulation() and _go_back_to_sim()
+        - Controller injected after creation: SimulationController
     """
 
-    _SIDE_PAD = 36
-    _GAP      = 44
+    _SIDE_PAD = 36   # horizontal padding before the first process box
+    _GAP      = 44   # horizontal gap between adjacent process boxes
 
     def __init__(self, parent, dispatcher: EventDispatcher) -> None:
+        """
+        Parameters
+        ----------
+        parent : ctk.CTk | ctk.CTkFrame
+            Root window or parent frame.
+        dispatcher : EventDispatcher
+            Shared event bus; this view subscribes itself immediately.
+        """
         ctk.CTkFrame.__init__(self, parent, fg_color=theme.BG_MAIN)
         self.controller: "SimulationController | None" = None
 
-        # Diagram-specified widget attributes
+        # Diagram-specified widget attributes (set during _build)
         self.line_canvas:  tk.Canvas     | None = None
         self.status_panel: ctk.CTkFrame  | None = None
         self.speed_slider: ctk.CTkSlider | None = None
@@ -85,7 +177,7 @@ class SimulationView(ctk.CTkFrame, Observer):
         # Internal UI state
         self._step_n_var:    ctk.StringVar  = ctk.StringVar(value="1")
         self._step_mode_var: ctk.BooleanVar = ctk.BooleanVar(value=False)
-        self._play_paused:   bool           = False
+        self._play_paused:   bool           = False   # True when engine is paused mid-run
         self._play_btn:      ctk.CTkButton  | None = None
         self._step_btn:      ctk.CTkButton  | None = None
         self._inject_btn:    ctk.CTkButton  | None = None
@@ -93,12 +185,70 @@ class SimulationView(ctk.CTkFrame, Observer):
         self._time_label:    ctk.CTkLabel   | None = None
         self._log_text:      tk.Text        | None = None
 
+        # Canvas redraw coalescing
+        self._redraw_scheduled: bool = False
+        # Cache of per-process box widths; invalidated on reset
+        self._box_widths_cache: list[int] | None = None
+        # Log message buffer flushed in batches every ~16 ms
+        self._log_buffer: list[str] = []
+        self._log_flush_scheduled: bool = False
+
         self._build()
         dispatcher.subscribe(self)
+
+    # ── Deferred-render scheduling ────────────────────────────────────────────
+
+    def _schedule_redraw(self) -> None:
+        """
+        Schedule a canvas redraw at the next idle moment.
+
+        Coalesces multiple rapid event-driven redraw requests into a single
+        repaint per event loop iteration. Safe to call from the main thread.
+        """
+        if self._redraw_scheduled:
+            return
+        self._redraw_scheduled = True
+        self.after_idle(self._do_redraw)
+
+    def _do_redraw(self) -> None:
+        """Execute the deferred canvas redraw with a lifecycle safety check."""
+        self._redraw_scheduled = False
+        try:
+            if not self.winfo_exists():
+                return
+        except Exception:
+            return
+        self._redraw_canvas()
+
+    def apply_engine_speed(self, speed_ms: int) -> None:
+        """
+        Synchronise the speed slider and label to the engine's current speed.
+
+        Called by SimulationController.__init__() so that when the view is
+        recreated (e.g. on return from report), the slider reflects the speed
+        that was already set before the view was destroyed.
+
+        Parameters
+        ----------
+        speed_ms : int
+            Current engine tick interval in milliseconds.
+        """
+        if self.speed_slider is not None:
+            self.speed_slider.set(speed_ms)
+        if self._speed_lbl is not None:
+            self._speed_lbl.configure(text=f"{speed_ms} ms")
 
     # ── Layout ────────────────────────────────────────────────────────────────
 
     def _build(self) -> None:
+        """
+        Construct the full simulation screen layout.
+
+        Grid:
+          row 0 (top bar)   — spans both columns; title, clock, nav buttons
+          row 1 (body)      — col 0: canvas area; col 1: sidebar (rowspan 2)
+          row 2 (bottom bar)— col 0: play/reset/speed
+        """
         # Root: 2 rows (top bar + body), 2 cols (canvas area + sidebar)
         self.rowconfigure(0, weight=0)   # top bar
         self.rowconfigure(1, weight=1)   # body
@@ -114,6 +264,12 @@ class SimulationView(ctk.CTkFrame, Observer):
     # ── Top bar ───────────────────────────────────────────────────────────────
 
     def _build_top_bar(self) -> None:
+        """
+        Build the top bar containing the title label, clock pill, and nav buttons.
+
+        The clock label (self._time_label) is updated on every tick event.
+        Nav buttons ("set up", "report") trigger full-reset and report transitions.
+        """
         bar = ctk.CTkFrame(self, fg_color="transparent")
         bar.grid(row=0, column=0, columnspan=2, sticky="ew",
                  padx=16, pady=(12, 6))
@@ -169,6 +325,14 @@ class SimulationView(ctk.CTkFrame, Observer):
     # ── Canvas area ───────────────────────────────────────────────────────────
 
     def _build_canvas_area(self) -> None:
+        """
+        Build the scrollable process-diagram canvas (row 1, col 0).
+
+        The canvas is bound to <Configure> so _redraw_canvas() fires immediately
+        when the widget receives its real pixel dimensions, preventing an empty
+        canvas on first display. A horizontal scrollbar is provided for lines
+        wider than the viewport.
+        """
 
         wrap = ctk.CTkFrame(
             self,
@@ -235,6 +399,13 @@ class SimulationView(ctk.CTkFrame, Observer):
     # ── Bottom bar (play / reset / speed) ────────────────────────────────────
 
     def _build_bottom_bar(self) -> None:
+        """
+        Build the bottom bar with play/pause, reset, and speed-slider controls.
+
+        The play button text and colour changes based on simulation state
+        (see _update_play_btn). The speed slider controls the tick interval
+        in milliseconds (50–2000 ms, 39 steps).
+        """
         bar = ctk.CTkFrame(self, fg_color="transparent")
         bar.grid(row=2, column=0, sticky="ew", padx=(16, 16), pady=(0, 12))
         bar.columnconfigure(2, weight=1)   # speed block expands
@@ -281,7 +452,7 @@ class SimulationView(ctk.CTkFrame, Observer):
         ).pack(side="left")
 
         self._speed_lbl = ctk.CTkLabel(
-            speed_hdr, text="50 ms",
+            speed_hdr, text="-- ms",
             font=theme.font(12, family=theme.FONT_BOLD),
             text_color=theme.NEON,
         )
@@ -295,12 +466,20 @@ class SimulationView(ctk.CTkFrame, Observer):
             fg_color=theme._PANEL_BD,
             command=self._on_speed_change,
         )
-        self.speed_slider.set(50)
         self.speed_slider.pack(fill="x", padx=16, pady=(4, 10))
 
     # ── Sidebar ───────────────────────────────────────────────────────────────
 
     def _build_sidebar(self) -> None:
+        """
+        Build the right sidebar containing step-mode controls, inject button,
+        and the scrollable event log.
+
+        Step mode row: a CTkSwitch toggles step mode; when active, the step
+        button and inject button become enabled and the play button is disabled.
+        The event log is a read-only tk.Text widget that receives one line per
+        simulation event, scrolled to the latest entry automatically.
+        """
         sidebar = ctk.CTkFrame(
             self,
             fg_color=theme._PANEL_BG,
@@ -420,12 +599,37 @@ class SimulationView(ctk.CTkFrame, Observer):
     # ── Observer protocol ─────────────────────────────────────────────────────
 
     def update(self, event: SimulationEvent | None = None) -> None:
+        """
+        Receive a simulation event and marshal it to the main thread.
+
+        Called by EventDispatcher.notify() from the simulation background thread.
+        The None branch delegates to CTkFrame.update() (Tk widget refresh) to
+        satisfy both the Observer interface and the Tkinter widget protocol.
+
+        Parameters
+        ----------
+        event : SimulationEvent | None
+            The event to handle, or None if called as a Tk widget update.
+        """
         if event is None:
             super().update()
         else:
+            # Marshal to main thread — never touch Tk widgets from a background thread.
             self.after(0, self._handle_event, event)
 
     def _handle_event(self, event: SimulationEvent) -> None:
+        """
+        Dispatch a SimulationEvent to the appropriate render or log action.
+
+        Always runs on the main thread (scheduled via after(0, ...)). Includes
+        a winfo_exists() guard so it no-ops safely if the view was destroyed
+        while an event was queued (e.g. during a rapid view switch).
+
+        Parameters
+        ----------
+        event : SimulationEvent
+            The event to handle.
+        """
         try:
             if not self.winfo_exists():
                 return
@@ -477,7 +681,8 @@ class SimulationView(ctk.CTkFrame, Observer):
             self._log("↺ RESET")
             self._play_paused = False
             self._update_play_btn()
-            self._redraw_canvas()
+            self._box_widths_cache = None
+            self._schedule_redraw()
 
         if self._time_label:
             self._time_label.configure(text=f"t = {t}")
@@ -485,15 +690,47 @@ class SimulationView(ctk.CTkFrame, Observer):
     # ── Render methods ────────────────────────────────────────────────────────
 
     def render_product_move(self, product) -> None:
-        self._redraw_canvas()
+        """
+        Schedule a canvas redraw after a product has moved to a new location.
+
+        Parameters
+        ----------
+        product : Product
+            The product that just moved (not used directly — full redraw reads
+            engine state).
+        """
+        self._schedule_redraw()
 
     def render_queue_depth(self, task) -> None:
-        self._redraw_canvas()
+        """
+        Schedule a canvas redraw after a task's queue depth changed.
+
+        Parameters
+        ----------
+        task : Task
+            The task whose queue changed (not used directly).
+        """
+        self._schedule_redraw()
 
     def render_task_status(self, event) -> None:
-        self._redraw_canvas()
+        """
+        Schedule a canvas redraw after a task started or finished processing.
+
+        Parameters
+        ----------
+        event : SimulationEvent
+            The TASK_STARTED or TASK_FINISHED event (not used directly).
+        """
+        self._schedule_redraw()
 
     def show_pause_snapshot(self) -> None:
+        """
+        Write a full pipeline state snapshot to the event log on pause.
+
+        Reads current product positions from the engine (via controller) and
+        logs one line per task showing the current product ID (or "idle") and
+        the queue depth.
+        """
         if not self.controller:
             return
         engine = self.controller._engine
@@ -509,10 +746,18 @@ class SimulationView(ctk.CTkFrame, Observer):
         self._log("\n".join(lines))
 
     def clear_canvas(self) -> None:
+        """Delete all items from the process-diagram canvas."""
         if self.line_canvas:
             self.line_canvas.delete("all")
 
     def set_paused_state(self) -> None:
+        """
+        Force the view into the "paused" state so the play button shows "resume".
+
+        Called by MainController._go_back_to_sim() after recreating the view
+        for the return-from-report path, ensuring the user sees RESUME instead
+        of PLAY even though this is a fresh SimulationView instance.
+        """
         self._play_paused = True
         self._update_play_btn()
 
@@ -520,8 +765,22 @@ class SimulationView(ctk.CTkFrame, Observer):
 
     def _get_box_width(self, proc) -> int:
         """
-        Calculate dynamic process width based on the
-        longest task/process name.
+        Calculate a process box width that comfortably fits all text inside it.
+
+        Measures the pixel width of the process name and all task names using
+        the theme font, then returns the maximum plus padding (minimum 140 px).
+        Results are cached in _box_widths_cache to avoid repeated font.measure()
+        calls on every redraw.
+
+        Parameters
+        ----------
+        proc : Process
+            The process whose name and tasks determine the box width.
+
+        Returns
+        -------
+        int
+            Box width in pixels (>= 140).
         """
 
         try:
@@ -546,12 +805,24 @@ class SimulationView(ctk.CTkFrame, Observer):
             return 160
 
     def _redraw_canvas(self) -> None:
+        """
+        Fully repaint the process-diagram canvas from the current engine state.
+
+        Deletes all canvas items and redraws:
+          - One rounded-rect process box per process (vertically centred).
+          - Within each box: a header with the process name, then one task row
+            per task showing a status dot, task name, current product ID, and
+            queue depth.
+          - Horizontal arrows connecting adjacent process boxes.
+
+        The scrollregion is set to encompass the full content width so the
+        horizontal scrollbar reflects the actual pipeline length.
+        """
         if not self.controller or not self.line_canvas:
             return
         engine = self.controller._engine
         c = self.line_canvas
         c.delete("all")
-        c.update_idletasks()
 
         processes = engine.production_line.processes
         if not processes:
@@ -561,7 +832,9 @@ class SimulationView(ctk.CTkFrame, Observer):
         H = c.winfo_height() or 400
         n = len(processes)
 
-        box_widths = [self._get_box_width(proc) for proc in processes]
+        if self._box_widths_cache is None or len(self._box_widths_cache) != len(processes):
+            self._box_widths_cache = [self._get_box_width(proc) for proc in processes]
+        box_widths = self._box_widths_cache
 
         xs: list[int] = []
         x = self._SIDE_PAD
@@ -642,7 +915,7 @@ class SimulationView(ctk.CTkFrame, Observer):
                 )
 
                 # Status text
-                pid_txt = f"P{task.current_product.id}" if is_busy else "idle"
+                pid_txt = f"P{task.current_product.id}" if task.current_product else "idle"
                 c.create_text(
                     tx + 22, ty + 28,
                     text=f"{pid_txt}  q = {q_len}", anchor="w",
@@ -666,6 +939,16 @@ class SimulationView(ctk.CTkFrame, Observer):
     # ── Button handlers ───────────────────────────────────────────────────────
 
     def _on_play_pause(self) -> None:
+        """
+        Handle the play/pause/resume button press.
+
+        State machine:
+          not started → opens product-count dialog → calls controller.on_run(n)
+          paused       → calls controller.on_resume()
+          running      → calls controller.on_pause()
+
+        No-op in step mode (the step button is used instead).
+        """
         if not self.controller:
             return
         if self._step_mode_var.get():
@@ -686,6 +969,15 @@ class SimulationView(ctk.CTkFrame, Observer):
             self.controller.on_pause()
 
     def _update_play_btn(self) -> None:
+        """
+        Reconfigure the play button text and colours to match current state.
+
+        States:
+          step mode active  → disabled grey "play"
+          not yet started   → normal "play"  (dark panel colour)
+          paused mid-run    → normal "resume" (NEON green)
+          running           → normal "pause"  (NEON_AMBER)
+        """
         if self._play_btn is None:
             return
         if self._step_mode_var.get():
@@ -714,6 +1006,14 @@ class SimulationView(ctk.CTkFrame, Observer):
             )
 
     def _set_step_mode_ui(self, active: bool) -> None:
+        """
+        Enable or disable the step/inject buttons based on step-mode state.
+
+        Parameters
+        ----------
+        active : bool
+            True when step mode is being activated; False when deactivated.
+        """
         if active:
             if self._step_btn:
                 self._step_btn.configure(state="normal", fg_color=theme.NEON,
@@ -729,22 +1029,38 @@ class SimulationView(ctk.CTkFrame, Observer):
         self._update_play_btn()
 
     def _reset(self) -> None:
+        """
+        Handle the reset button press.
+
+        Clears _play_paused, delegates a soft reset to the controller (which
+        calls engine.reset()), resets the box-widths cache, and schedules a
+        canvas redraw so process boxes reappear immediately after reset.
+        """
         if not self.controller:
             return
         self._play_paused = False
         self.controller.on_reset(soft=True)
         self._update_play_btn()
-        self.after(50, self._redraw_canvas)
+        self._box_widths_cache = None
+        self._schedule_redraw()
 
     def _go_to_setup(self) -> None:
+        """Handle the "set up" nav button — performs a full reset to SetupView."""
         if self.controller:
             self.controller.on_reset(soft=False)
 
     def _go_to_report(self) -> None:
+        """Handle the "report" nav button — navigates to ReportView."""
         if self.controller:
             self.controller.on_request_report()
 
     def _toggle_step_mode(self) -> None:
+        """
+        Toggle step mode via the sidebar switch.
+
+        Calls controller.on_toggle_step_mode() which returns the new state,
+        logs a message, and updates the step/inject/play button enablement.
+        """
         if not self.controller:
             return
         active = self.controller.on_toggle_step_mode()
@@ -752,6 +1068,12 @@ class SimulationView(ctk.CTkFrame, Observer):
         self._set_step_mode_ui(active)
 
     def _do_step(self) -> None:
+        """
+        Advance the simulation by N cycles on manual step button press.
+
+        Reads N from the step entry widget; resets to 1 if the value is
+        invalid or out of the 1–99999 range.
+        """
         if not self.controller:
             return
         try:
@@ -762,15 +1084,27 @@ class SimulationView(ctk.CTkFrame, Observer):
             self._step_n_var.set("1")
             n = 1
         self.controller.on_step(n)
-        self._redraw_canvas()
+        self._schedule_redraw()
 
     def _do_inject(self) -> None:
+        """Handle the "+ inject" button — injects one product and redraws the canvas."""
         if self.controller:
             self.controller.on_inject_product()
             self._log("+ injected product")
-            self._redraw_canvas()
+            self._schedule_redraw()
 
     def _on_speed_change(self, value) -> None:
+        """
+        Handle speed slider movement.
+
+        Updates the speed label and delegates to the controller which sets the
+        engine's tick interval. The change takes effect on the next loop iteration.
+
+        Parameters
+        ----------
+        value : float
+            Raw slider value (cast to int for milliseconds).
+        """
         speed = int(value)
         if self._speed_lbl:
             self._speed_lbl.configure(text=f"{speed} ms")
@@ -778,6 +1112,14 @@ class SimulationView(ctk.CTkFrame, Observer):
             self.controller.on_speed_change(speed)
 
     def _show_completion(self) -> None:
+        """
+        Display a blocking modal dialog announcing production completion.
+
+        The dialog is a CTkToplevel with transient() set so it stays above the
+        main window. grab_set() is deferred by 50 ms (after(50, ...)) to ensure
+        the window is fully mapped before the grab is applied, preventing a
+        Tkinter grab-before-map error on some platforms.
+        """
         self._log("🏁 ALL DONE!")
         try:
             modal = ctk.CTkToplevel(self)
@@ -810,14 +1152,44 @@ class SimulationView(ctk.CTkFrame, Observer):
     # ── Event log ─────────────────────────────────────────────────────────────
 
     def _log(self, msg: str) -> None:
+        """
+        Append a message to the event log with batched flushing.
+
+        Messages are accumulated in _log_buffer and flushed at most once per
+        16 ms. This prevents Tkinter Text widget thrashing on high-frequency
+        simulation events (e.g. many TASK_STARTED events per second at high speed).
+
+        Parameters
+        ----------
+        msg : str
+            The log line to append (no trailing newline needed).
+        """
         if self._log_text is None:
+            return
+        self._log_buffer.append(msg)
+        if self._log_flush_scheduled:
+            return
+        self._log_flush_scheduled = True
+        self.after(16, self._flush_log)
+
+    def _flush_log(self) -> None:
+        """
+        Write all buffered log messages to the Text widget in a single batch.
+
+        Includes a winfo_exists() guard to prevent crashes if the widget was
+        destroyed between the after() scheduling and the actual flush execution.
+        """
+        self._log_flush_scheduled = False
+        if not self._log_buffer or self._log_text is None:
             return
         try:
             if not self._log_text.winfo_exists():
                 return
         except Exception:
             return
+        chunk = "\n".join(self._log_buffer) + "\n"
+        self._log_buffer.clear()
         self._log_text.configure(state="normal")
-        self._log_text.insert("end", msg + "\n")
+        self._log_text.insert("end", chunk)
         self._log_text.see("end")
         self._log_text.configure(state="disabled")

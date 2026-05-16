@@ -1,3 +1,33 @@
+"""
+setup_view.py
+-------------
+Production-line configuration screen (Setup phase).
+
+SetupView is a CTkFrame that fills the root window during the setup phase.
+It provides the entire UI for building the production line before simulation:
+  - Left column  : app branding, JSON load/save buttons.
+  - Right column : process tiles (scrollable horizontal strip), task list,
+                   canvas line-preview, and footer confirm button.
+
+Key design patterns used here:
+  - Deferred rendering: structural changes to the process tiles or preview
+    canvas are batched via after_idle() (see _schedule_tiles_rebuild and
+    _schedule_preview_redraw) so rapid successive mutations only trigger
+    one redraw per event loop iteration.
+  - Fast recolor: when only the selection changes (no add/remove), only
+    border colours are updated (_refresh_tile_colors) without destroying and
+    recreating tiles.
+  - Canvas scrollregion: both the process-tiles canvas and the line-preview
+    canvas maintain correct scrollregion values via _sync_proc_tiles_scrollregion
+    and the scrollregion=(0,0,W,content_h) pattern.
+
+Relationships:
+    - Created by: MainController.start_setup()
+    - Controller set after creation: SetupController (via view.controller = ...)
+    - Calls into: SetupController.on_*() methods for all user actions
+    - Uses: dialogs.ask_process_name(), dialogs.ask_task_details() for input
+"""
+
 from __future__ import annotations
 import math
 import tkinter as tk
@@ -15,6 +45,26 @@ if TYPE_CHECKING:
 
 
 def _load_logo(parent, size: tuple[int, int] = (40, 40)) -> ctk.CTkLabel | None:
+    """
+    Create a CTkLabel containing the LOGO.png asset, or return None if unavailable.
+
+    Uses PIL/Pillow to open the PNG and wraps it in a CTkImage so CustomTkinter
+    can display it at the requested size without pixelation. A strong reference
+    to the image is stored on the label (_logo_img) to prevent garbage collection.
+
+    Parameters
+    ----------
+    parent : ctk.CTkWidget
+        The parent widget for the label.
+    size : tuple[int, int]
+        Desired (width, height) in pixels for the displayed image.
+
+    Returns
+    -------
+    ctk.CTkLabel | None
+        A label ready to be packed/gridded, or None if PIL is not installed
+        or the logo file does not exist.
+    """
     if not theme.LOGO_PATH.exists():
         return None
     try:
@@ -25,7 +75,7 @@ def _load_logo(parent, size: tuple[int, int] = (40, 40)) -> ctk.CTkLabel | None:
             size=size,
         )
         lbl = ctk.CTkLabel(parent, image=img, text="")
-        lbl._logo_img = img
+        lbl._logo_img = img   # prevent GC of the CTkImage reference
         return lbl
     except Exception:
         return None
@@ -33,42 +83,138 @@ def _load_logo(parent, size: tuple[int, int] = (40, 40)) -> ctk.CTkLabel | None:
 
 class SetupView(ctk.CTkFrame):
     """
-    Production-line configuration interface.
+    Production-line configuration interface shown during the Setup phase.
+
+    Layout: two-column grid inside the root window.
+      Left column  — app branding (title card, credits) and JSON I/O.
+      Right column — process tiles, task list, line preview, confirm button.
+
+    The view is intentionally stateless with respect to the model: it reads
+    data from the controller on every render call and does not cache model
+    objects. The only mutable state it owns is UI-selection state
+    (_selected_proc) and deferred-render flags.
 
     Diagram attributes (V-CD-06):
-        process_form : CTkFrame           (process-tiles section)
-        task_list    : CTkScrollableFrame
-        line_canvas  : tk.Canvas
+        process_form : CTkFrame           — process-tiles section container
+        task_list    : CTkScrollableFrame — horizontal task strip
+        line_canvas  : tk.Canvas          — snake-pattern line preview
+
+    Relationships:
+        - Created by: MainController.start_setup()
+        - Controller injected after creation: SetupController
+        - Uses: dialogs.ask_process_name(), dialogs.ask_task_details()
     """
 
     def __init__(self, parent, on_confirm: Callable) -> None:
+        """
+        Parameters
+        ----------
+        parent : ctk.CTk | ctk.CTkFrame
+            Root window or parent frame that hosts this view.
+        on_confirm : Callable
+            Zero-argument callback invoked when the user clicks "start simulation"
+            and validation passes. Supplied by MainController.
+        """
         super().__init__(parent, fg_color="transparent")
         self.controller:  "SetupController | None" = None
         self._on_confirm: Callable = on_confirm
 
-        # Diagram-required widget attributes
+        # Diagram-required widget attributes (set during _build)
         self.process_form: ctk.CTkFrame             | None = None
         self.task_list:    ctk.CTkScrollableFrame   | None = None
         self.line_canvas:  tk.Canvas                | None = None
 
-        # Internal state
+        # Currently selected process name (drives task-list display)
         self._selected_proc:  str | None = None
-        self._err_label:      ctk.CTkLabel | None = None
-        self._sel_label:      ctk.CTkLabel | None = None
+        self._err_label:      ctk.CTkLabel | None = None   # footer error label
+        self._sel_label:      ctk.CTkLabel | None = None   # "tasks for: X" label
 
-        # Process-tiles canvas references
+        # Process-tiles horizontal canvas and its embedded frame
         self._proc_tiles_canvas: tk.Canvas | None = None
         self._proc_tiles_frame:  tk.Frame  | None = None
 
-        # Fast-recolor cache: proc.name -> {"tile", "name_lbl", "task_lbl"}
+        # Fast-recolor cache: proc.name → {"tile", "name_lbl", "task_lbl"}
+        # Populated by _render_proc_tiles(); used by _refresh_tile_colors()
         self._tile_widgets: dict[str, dict] = {}
 
+        # Deferred-render flags — prevent multiple redraws per event loop tick
+        self._preview_redraw_scheduled: bool = False
+        self._tiles_rebuild_scheduled:  bool = False
+
         self._build()
+
+    # ── Canvas drawing helpers ────────────────────────────────────────────────
+
+    def _rounded_rect(self, c, x1, y1, x2, y2, r=10, **kw):
+        """
+        Draw a filled rounded rectangle on a tk.Canvas using a smooth polygon.
+
+        Parameters
+        ----------
+        c : tk.Canvas
+            Target canvas.
+        x1, y1, x2, y2 : int
+            Bounding box of the rectangle.
+        r : int
+            Corner radius in pixels.
+        **kw
+            Additional keyword arguments forwarded to canvas.create_polygon
+            (e.g. fill, outline, width).
+        """
+        pts = [
+            x1 + r, y1, x2 - r, y1, x2, y1, x2, y1 + r,
+            x2, y2 - r, x2, y2, x2 - r, y2, x1 + r, y2,
+            x1, y2, x1, y2 - r, x1, y1 + r, x1, y1, x1 + r, y1,
+        ]
+        return c.create_polygon(pts, smooth=True, **kw)
+
+    # ── Deferred-render scheduling ────────────────────────────────────────────
+
+    def _schedule_preview_redraw(self) -> None:
+        """
+        Schedule a preview canvas redraw at the next idle moment.
+
+        Coalesces multiple rapid calls into a single redraw per event loop
+        iteration. Safe to call multiple times — only one after_idle is queued.
+        """
+        if self._preview_redraw_scheduled:
+            return
+        self._preview_redraw_scheduled = True
+        self.after_idle(self._do_preview_redraw)
+
+    def _do_preview_redraw(self) -> None:
+        """Execute the deferred preview canvas redraw."""
+        self._preview_redraw_scheduled = False
+        if self.controller:
+            self._update_canvas_preview(self.controller._production_line.processes)
+
+    def _schedule_tiles_rebuild(self) -> None:
+        """
+        Schedule a full process-tiles rebuild at the next idle moment.
+
+        Coalesces multiple rapid structural changes (add/remove/reorder)
+        into a single rebuild per event loop iteration.
+        """
+        if self._tiles_rebuild_scheduled:
+            return
+        self._tiles_rebuild_scheduled = True
+        self.after_idle(self._do_tiles_rebuild)
+
+    def _do_tiles_rebuild(self) -> None:
+        """Execute the deferred full process-tiles rebuild."""
+        self._tiles_rebuild_scheduled = False
+        self._render_proc_tiles()
 
     # ── Layout ───────────────────────────────────────────────────────────────
 
     def _build(self) -> None:
-        
+        """
+        Construct the full two-column layout and all sub-sections.
+
+        Grid layout:
+          column 0 (fixed 300 px) — left panel (branding + JSON I/O)
+          column 1 (expandable)   — right panel (processes, tasks, preview, footer)
+        """
         self.configure(fg_color=theme.BG_MAIN)
 
         self.columnconfigure(0, weight=0, minsize=300)
@@ -92,9 +238,23 @@ class SetupView(ctk.CTkFrame):
         self._build_preview_section_new(right_col)
         self._build_footer_new(right_col)
 
-    # ── Columna izquierda ─────────────────────────────────────────────────────
+    # ── Left column ───────────────────────────────────────────────────────────
 
     def _build_left_panel(self, parent: ctk.CTkFrame) -> None:
+        """
+        Build the left panel containing branding, credits, and JSON I/O controls.
+
+        Four rows stacked vertically:
+          row 0 — credits card (course name + authors)
+          row 1 — title card ("production line simulator")
+          row 2 — load JSON button
+          row 3 — save JSON button
+
+        Parameters
+        ----------
+        parent : ctk.CTkFrame
+            The left-column container frame.
+        """
         parent.rowconfigure(0, weight=0)
         parent.rowconfigure(1, weight=0)
         parent.rowconfigure(2, weight=0)
@@ -109,7 +269,7 @@ class SetupView(ctk.CTkFrame):
 
         ctk.CTkLabel(
             credits_frame,
-            text="modelación de hardware y software orientado a objetos",
+            text="Modelación de hardware y software orientado a objetos",
             font=theme.font(9),
             text_color=theme._TEXT_DIM2,
             wraplength=240,
@@ -118,7 +278,7 @@ class SetupView(ctk.CTkFrame):
 
         ctk.CTkLabel(
             credits_frame,
-            text="chaves · duarte · madrigal · molina",
+            text="Chaves · Duarte · Madrigal · Molina",
             font=theme.font(10, bold=True),
             text_color=theme._TEXT_MAIN,
             justify="center",
@@ -202,9 +362,22 @@ class SetupView(ctk.CTkFrame):
             command=self._save_json,
         ).grid(row=0, column=1, rowspan=2, padx=(8, 0))
 
-    # ── Columna derecha: secciones ────────────────────────────────────────────
+    # ── Right column sections ─────────────────────────────────────────────────
 
     def _build_process_section_new(self, parent: ctk.CTkFrame) -> None:
+        """
+        Build the process-tiles section (row 0 of the right column).
+
+        Contains:
+          - Header row with "processes" label and "+add process" button.
+          - A horizontally scrollable tk.Canvas embedding a tk.Frame that holds
+            the individual process tiles. The frame's width drives the scrollregion.
+
+        Parameters
+        ----------
+        parent : ctk.CTkFrame
+            The right-column container frame.
+        """
         container = ctk.CTkFrame(
             parent, fg_color=theme._PANEL_BG, corner_radius=14,
             border_width=1, border_color=theme._PANEL_BD,
@@ -254,6 +427,19 @@ class SetupView(ctk.CTkFrame):
         )
 
     def _build_task_section_new(self, parent: ctk.CTkFrame) -> None:
+        """
+        Build the task list section (row 1 of the right column).
+
+        Contains:
+          - Header row with "tasks" label and "+add tasks" button.
+          - A status label showing which process is currently selected.
+          - A horizontal CTkScrollableFrame (self.task_list) holding task tiles.
+
+        Parameters
+        ----------
+        parent : ctk.CTkFrame
+            The right-column container frame.
+        """
         container = ctk.CTkFrame(
             parent, fg_color=theme._PANEL_BG, corner_radius=14,
             border_width=1, border_color=theme._PANEL_BD,
@@ -275,7 +461,7 @@ class SetupView(ctk.CTkFrame):
         ).pack(side="right")
 
         self._sel_label = ctk.CTkLabel(
-            container, text="< selecciona un proceso arriba",
+            container, text="< select a process from above",
             font=theme.font(10), text_color=theme._TEXT_DIM2,
         )
         self._sel_label.pack(anchor="w", padx=16, pady=(0, 4))
@@ -294,6 +480,18 @@ class SetupView(ctk.CTkFrame):
         self.task_list.pack(fill="x", expand=False, padx=12, pady=(0, 12))
 
     def _build_preview_section_new(self, parent: ctk.CTkFrame) -> None:
+        """
+        Build the line-preview canvas section (row 2, weight=1, of the right column).
+
+        Contains a vertically scrollable tk.Canvas (self.line_canvas) that renders
+        the production line as a snake-pattern diagram of rounded process boxes
+        connected by arrows.
+
+        Parameters
+        ----------
+        parent : ctk.CTkFrame
+            The right-column container frame.
+        """
         container = ctk.CTkFrame(
             parent, fg_color=theme._PANEL_BG, corner_radius=14,
             border_width=1, border_color=theme._PANEL_BD,
@@ -323,6 +521,18 @@ class SetupView(ctk.CTkFrame):
         self.line_canvas.configure(yscrollcommand=v_scroll.set)
 
     def _build_footer_new(self, parent: ctk.CTkFrame) -> None:
+        """
+        Build the footer row (row 3 of the right column).
+
+        Contains:
+          - An error label (left) that shows validation messages in NEON_RED.
+          - A "start simulation" button (right) that triggers _confirm().
+
+        Parameters
+        ----------
+        parent : ctk.CTkFrame
+            The right-column container frame.
+        """
         footer = ctk.CTkFrame(parent, fg_color="transparent", corner_radius=16)
         footer.grid(row=3, column=0, sticky="ew", pady=(4, 0))
         footer.columnconfigure(0, weight=1)
@@ -345,12 +555,28 @@ class SetupView(ctk.CTkFrame):
     # ── Public render methods (called by controller) ──────────────────────────
 
     def render_process_form(self) -> None:
-        """Called by controller after any structural change to the process list."""
-        self._render_proc_tiles()
-        if self.controller:
-            self._update_canvas_preview(self.controller._production_line.processes)
+        """
+        Refresh the process tiles and line preview after any structural change.
+
+        Called by SetupController after add/remove/reorder process or task
+        operations. Schedules both a tiles rebuild and a preview redraw so
+        that multiple rapid calls coalesce into a single UI update.
+        """
+        self._schedule_tiles_rebuild()
+        self._schedule_preview_redraw()
 
     def render_task_list(self, processes) -> None:
+        """
+        Repopulate the task strip for the currently selected process.
+
+        Clears all existing task tiles and re-renders them from the current
+        task list of the selected process. No-op if no process is selected.
+
+        Parameters
+        ----------
+        processes : list[Process]
+            Current ordered process list from the production line.
+        """
         if self.task_list is None or self._selected_proc is None:
             return
         for w in self.task_list.winfo_children():
@@ -363,16 +589,39 @@ class SetupView(ctk.CTkFrame):
             self._render_task_row(proc.name, task, idx, len(proc.tasks))
 
     def render_line_preview(self, processes) -> None:
-        self._update_canvas_preview(processes)
+        """
+        Schedule a redraw of the snake-pattern line preview canvas.
+
+        Parameters
+        ----------
+        processes : list[Process]
+            Accepted for interface compatibility; the actual data is read
+            from the controller inside the scheduled redraw.
+        """
+        self._schedule_preview_redraw()
 
     def show_validation_error(self, msg: str) -> None:
+        """
+        Display a validation error message in the footer error label.
+
+        Parameters
+        ----------
+        msg : str
+            Human-readable error text shown in NEON_RED.
+        """
         if self._err_label:
             self._err_label.configure(text=msg)
 
     # ── Process tiles: full rebuild vs fast recolor ───────────────────────────
 
     def _render_proc_tiles(self) -> None:
-        """Full rebuild of the tile row — call only on structural changes."""
+        """
+        Fully destroy and recreate all process tiles from the current model state.
+
+        This is the expensive path — call only after structural changes (add,
+        remove, reorder). For selection-only changes use _refresh_tile_colors().
+        Repopulates self._tile_widgets with widget references for future recolors.
+        """
         if self._proc_tiles_frame is None:
             return
 
@@ -388,12 +637,17 @@ class SetupView(ctk.CTkFrame):
         for idx, proc in enumerate(pl.processes):
             self._render_process_tile(proc, idx, total)
 
-        self._proc_tiles_frame.update_idletasks()
         if self._proc_tiles_canvas:
             self._sync_proc_tiles_scrollregion()
 
     def _refresh_tile_colors(self) -> None:
-        """Only recolor existing tiles — no destroy/recreate. Instant update."""
+        """
+        Update only the border colours of existing tiles to reflect the current
+        selection, without destroying or recreating any widgets.
+
+        Called after _select_process() when only the highlighted tile changes.
+        Much faster than _render_proc_tiles() for high-frequency interactions.
+        """
         for proc_name, refs in self._tile_widgets.items():
             is_sel = (proc_name == self._selected_proc)
             hl = theme.NEON if is_sel else theme._PANEL_BD
@@ -403,6 +657,25 @@ class SetupView(ctk.CTkFrame):
     # ── Process tile ──────────────────────────────────────────────────────────
 
     def _render_process_tile(self, proc, idx: int, total: int) -> None:
+        """
+        Render one process card inside the horizontal tiles strip.
+
+        Each tile shows the process name, task count, and left/right/delete
+        buttons. The selected tile uses NEON colours; others use the standard
+        panel style. Widget references are stored in _tile_widgets for later
+        fast recoloring.
+
+        Parameters
+        ----------
+        proc : Process
+            The process model object to represent.
+        idx : int
+            0-based position of this process in the ordered list (used to
+            enable/disable the left/right reorder buttons).
+        total : int
+            Total number of processes (used to disable the right button on
+            the last tile).
+        """
         is_sel = (proc.name == self._selected_proc)
         bg     = theme.NEON    if is_sel else theme._BTN_ADD
         fg     = theme.BG_MAIN if is_sel else theme._TEXT_MAIN
@@ -476,6 +749,24 @@ class SetupView(ctk.CTkFrame):
     # ── Task row ──────────────────────────────────────────────────────────────
 
     def _render_task_row(self, proc_name: str, task, idx: int, total: int) -> None:
+        """
+        Render one task card inside the horizontal task strip.
+
+        Each tile shows the task name, processing time (t=N), and
+        left/right/delete buttons for reordering and removal.
+
+        Parameters
+        ----------
+        proc_name : str
+            Name of the parent process (passed to controller on remove/reorder).
+        task : Task
+            The task model object to represent.
+        idx : int
+            0-based position of this task within the process (disables left
+            button when idx == 0).
+        total : int
+            Total task count in the process (disables right button on last).
+        """
         tile = ctk.CTkFrame(
             self.task_list,
             fg_color=theme._BTN_ADD,
@@ -530,11 +821,25 @@ class SetupView(ctk.CTkFrame):
     # ── Snake-pattern canvas preview ──────────────────────────────────────────
 
     def _update_canvas_preview(self, processes) -> None:
+        """
+        Redraw the line-preview canvas with a snake-pattern process diagram.
+
+        Calculates how many process boxes fit per row based on the canvas width,
+        then lays them out left-to-right on even rows and right-to-left on odd
+        rows (snake/boustrophedon pattern). Arrows connect adjacent boxes.
+
+        The first process box is coloured NEON (green), the last NEON_RED, and
+        all intermediate boxes use the standard panel colour.
+
+        Parameters
+        ----------
+        processes : list[Process]
+            Ordered list of processes to visualise.
+        """
         if self.line_canvas is None:
             return
         c = self.line_canvas
         c.delete("all")
-        c.update_idletasks()
         W = c.winfo_width()  or 500
         H = c.winfo_height() or 200
 
@@ -571,6 +876,7 @@ class SetupView(ctk.CTkFrame):
             y       = 10 + row * (BOX_H + GAP_V)
             positions.append((x, y))
 
+        # Arrows first (behind boxes)
         for i in range(n - 1):
             row_i  = i // per_row
             row_n  = (i + 1) // per_row
@@ -600,52 +906,34 @@ class SetupView(ctk.CTkFrame):
                         fill=theme._ACCENT, width=2, arrow="last", joinstyle="round",
                     )
 
+        # Boxes — native canvas drawing (fast)
         for i, proc in enumerate(processes):
             x, y = positions[i]
 
             color = (
-                theme.NEON if i == 0 and n == 1 else
-                theme.NEON if i == 0 else
+                theme.NEON     if i == 0 else
                 theme.NEON_RED if i == n - 1 else
                 theme._BTN_ADD
             )
-
             fg = (
                 theme.BG_MAIN
                 if color in (theme.NEON, theme.NEON_RED)
                 else theme._TEXT_MAIN
             )
 
-            proc_frame = ctk.CTkFrame(
-                c,
-                width=BOX_W + 5,
-                height=BOX_H + 5,
-                fg_color=color,
-                corner_radius=14,
-                border_width=1,
-                border_color=theme._PANEL_BD,
+            self._rounded_rect(
+                c, x, y, x + BOX_W, y + BOX_H, r=12,
+                fill=color, outline=theme._PANEL_BD, width=1,
             )
-
-            proc_frame.pack_propagate(False)
-
-            ctk.CTkLabel(
-                proc_frame,
-                text=proc.name[:16],
-                text_color=fg,
+            c.create_text(
+                x + BOX_W // 2, y + 14,
+                text=proc.name[:16], fill=fg,
                 font=theme.font(10, family=theme.FONT_BOLD),
-            ).pack(pady=(6, 0))
-
-            ctk.CTkLabel(
-                proc_frame,
-                text=f"{len(proc.tasks)} task(s)",
-                text_color=fg,
-                font=theme.font(10, family=theme.FONT_BOLD),
-            ).pack(pady=(0, 8))
-
-            c.create_window(
-                x + BOX_W // 2,
-                y + BOX_H // 2,
-                window=proc_frame
+            )
+            c.create_text(
+                x + BOX_W // 2, y + 30,
+                text=f"{len(proc.tasks)} task(s)", fill=fg,
+                font=theme.font(9, family=theme.FONT_BOLD),
             )
 
         rows = math.ceil(n / per_row)
@@ -655,6 +943,14 @@ class SetupView(ctk.CTkFrame):
     # ── Scrollbar helpers ─────────────────────────────────────────────────────
 
     def _sync_proc_tiles_scrollregion(self) -> None:
+        """
+        Recalculate and apply the scrollregion for the process-tiles canvas.
+
+        Computes the bounding box of all canvas items, expands it to at least
+        the canvas viewport size, and applies it so the horizontal scrollbar
+        reflects the true content width. Also resets xview to 0 when all
+        content fits without scrolling.
+        """
         if self._proc_tiles_canvas is None:
             return
         c = self._proc_tiles_canvas
@@ -677,6 +973,12 @@ class SetupView(ctk.CTkFrame):
             c.xview_moveto(0)
 
     def _proc_tiles_has_overflow(self) -> bool:
+        """
+        Return True if the process-tiles content is wider than the canvas viewport.
+
+        Used by _on_proc_tiles_xscroll() to decide whether scrolling should
+        be allowed or immediately clamped back to position 0.
+        """
         if self._proc_tiles_canvas is None:
             return False
         c = self._proc_tiles_canvas
@@ -688,6 +990,20 @@ class SetupView(ctk.CTkFrame):
         return max(0, x2 - x1) > (c.winfo_width() + 2)
 
     def _on_proc_tiles_xscroll(self, *args) -> None:
+        """
+        Custom xscrollcommand handler that prevents scrolling past the left edge.
+
+        When content fits without scrolling, the view is locked at position 0.
+        Negative scroll units (scroll left) are clamped if already at the edge.
+        This prevents the tiles from appearing partially off-screen when the
+        scrollbar is dragged on a narrower-than-content canvas.
+
+        Parameters
+        ----------
+        *args
+            Standard Tkinter scrollbar command arguments:
+            ("scroll", units, "units") or ("moveto", fraction).
+        """
         if self._proc_tiles_canvas is None:
             return
         c = self._proc_tiles_canvas
@@ -718,6 +1034,17 @@ class SetupView(ctk.CTkFrame):
     # ── Button / event handlers ───────────────────────────────────────────────
 
     def _select_process(self, name: str) -> None:
+        """
+        Set the active process selection and refresh the task strip.
+
+        Updates _selected_proc, the status label text, tile border colours
+        (fast recolor), and repopulates the task strip for the new selection.
+
+        Parameters
+        ----------
+        name : str
+            Name of the process tile that was clicked.
+        """
         self._selected_proc = name
         if self._sel_label:
             self._sel_label.configure(
@@ -729,6 +1056,12 @@ class SetupView(ctk.CTkFrame):
             self.render_task_list(self.controller._production_line.processes)
 
     def _add_process(self) -> None:
+        """
+        Open the add-process dialog and delegate to the controller if confirmed.
+
+        Shows dialogs.ask_process_name(); on confirmation, calls
+        SetupController.on_add_process() and schedules a full tiles/preview rebuild.
+        """
         if not self.controller:
             return
         name = dialogs.ask_process_name(self)
@@ -737,11 +1070,21 @@ class SetupView(ctk.CTkFrame):
         self.controller.on_add_process(name)
         self._clear_error()
         # Structural change → full rebuild
-        self._render_proc_tiles()
-        if self.controller:
-            self._update_canvas_preview(self.controller._production_line.processes)
+        self._schedule_tiles_rebuild()
+        self._schedule_preview_redraw()
 
     def _remove_process(self, name: str) -> None:
+        """
+        Remove a process tile and clear the task list if it was selected.
+
+        If the removed process was selected, clears _selected_proc and empties
+        the task strip before delegating to SetupController.on_remove_process().
+
+        Parameters
+        ----------
+        name : str
+            Name of the process to remove.
+        """
         if not self.controller:
             return
         if self._selected_proc == name:
@@ -755,20 +1098,35 @@ class SetupView(ctk.CTkFrame):
                     w.destroy()
         self.controller.on_remove_process(name)
         # Structural change → full rebuild
-        self._render_proc_tiles()
-        if self.controller:
-            self._update_canvas_preview(self.controller._production_line.processes)
+        self._schedule_tiles_rebuild()
+        self._schedule_preview_redraw()
 
     def _reorder_proc(self, name: str, new_idx: int) -> None:
+        """
+        Move a process to a new position and schedule a full tiles/preview rebuild.
+
+        Parameters
+        ----------
+        name : str
+            Name of the process to reorder.
+        new_idx : int
+            Target 0-based position in the ordered list.
+        """
         if not self.controller:
             return
         self.controller.on_reorder_process(name, new_idx)
         # Structural change → full rebuild
-        self._render_proc_tiles()
-        if self.controller:
-            self._update_canvas_preview(self.controller._production_line.processes)
+        self._schedule_tiles_rebuild()
+        self._schedule_preview_redraw()
 
     def _add_task(self) -> None:
+        """
+        Open the add-task dialog and delegate to the controller if confirmed.
+
+        Requires a process to be selected first; shows an info messagebox if not.
+        On confirmation, calls SetupController.on_add_task() with the selected
+        process name, task name, and processing time.
+        """
         if not self.controller or not self._selected_proc:
             messagebox.showinfo(
                 "No process selected",
@@ -783,10 +1141,29 @@ class SetupView(ctk.CTkFrame):
         self._clear_error()
 
     def _remove_task(self, task_name: str) -> None:
+        """
+        Delegate task removal to the controller for the currently selected process.
+
+        Parameters
+        ----------
+        task_name : str
+            Name of the task to remove.
+        """
         if self.controller and self._selected_proc:
             self.controller.on_remove_task(self._selected_proc, task_name)
 
     def _reorder_task(self, task_name: str, new_idx: int) -> None:
+        """
+        Delegate task reordering to the controller and immediately refresh the
+        task strip to reflect the new order.
+
+        Parameters
+        ----------
+        task_name : str
+            Name of the task to move.
+        new_idx : int
+            Target 0-based position within the process's task list.
+        """
         if self.controller and self._selected_proc:
             self.controller.on_reorder_task(self._selected_proc, task_name, new_idx)
             self.render_task_list(self.controller._production_line.processes)
@@ -794,6 +1171,13 @@ class SetupView(ctk.CTkFrame):
     # ── JSON persistence ──────────────────────────────────────────────────────
 
     def _load_json(self) -> None:
+        """
+        Open a file-picker dialog and load a production-line JSON config.
+
+        On success, delegates to SetupController.load_from_json(), clears the
+        current selection state, and schedules a full UI rebuild. Shows an
+        error messagebox if loading fails.
+        """
         if not self.controller:
             return
         path = filedialog.askopenfilename(
@@ -814,11 +1198,17 @@ class SetupView(ctk.CTkFrame):
                     w.destroy()
             self._clear_error()
             self._render_proc_tiles()
-            self._update_canvas_preview(self.controller._production_line.processes)
+            self._schedule_tiles_rebuild()
+            self._schedule_preview_redraw()
         except Exception as exc:
             messagebox.showerror("Load error", str(exc))
 
     def _save_json(self) -> None:
+        """
+        Open a save-file dialog and persist the current line configuration as JSON.
+
+        Shows a success info box or an error messagebox depending on the outcome.
+        """
         if not self.controller:
             return
         path = filedialog.asksaveasfilename(
@@ -837,10 +1227,18 @@ class SetupView(ctk.CTkFrame):
     # ── Start simulation ──────────────────────────────────────────────────────
 
     def _confirm(self) -> None:
+        """
+        Handle the "start simulation" button press.
+
+        Clears any existing error, runs validation via the controller, and
+        invokes the on_confirm callback if validation passes. The callback
+        is MainController._on_setup_confirmed() which calls start_simulation().
+        """
         self._clear_error()
         if self.controller and self.controller.on_confirm_setup():
             self._on_confirm()
 
     def _clear_error(self) -> None:
+        """Reset the footer error label to an empty string."""
         if self._err_label:
             self._err_label.configure(text="")

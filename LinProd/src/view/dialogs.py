@@ -1,14 +1,61 @@
+"""
+dialogs.py
+----------
+Blocking modal dialogs used by SetupView and SimulationView.
+
+All dialogs in this module follow the same pattern:
+  1. Subclass _Modal, which centres the window over the root and sets the
+     standard dark background.
+  2. Build the UI in __init__.
+  3. Call _wait() which calls grab_set() + wait_window() to block the caller
+     until the user confirms or cancels.
+  4. Store the validated result in self.result; _wait() returns it.
+
+Public API — three module-level helpers wrap the private dialog classes:
+  ask_process_name(widget) → str | None
+  ask_task_details(widget)  → tuple[str, int] | None
+  ask_product_count(widget) → int | None
+
+These are the only symbols that view code should import from this module.
+The private _Modal / _ProcessDialog / _TaskDialog / _ProductCountDialog classes
+are implementation details and should not be instantiated directly.
+"""
+
 from __future__ import annotations
 import customtkinter as ctk
 from . import theme
 
 
 class _Modal(ctk.CTkToplevel):
-    """Base class for all blocking modal dialogs."""
+    """
+    Abstract base class for all blocking modal dialogs in LinProd.
+
+    Centres itself over the root window, enforces a fixed size, and applies
+    the standard dark background from theme.BG_MAIN. Subclasses build their
+    UI in __init__ and call _wait() to block until the dialog is dismissed.
+
+    Attributes
+    ----------
+    result : Any
+        Set by the subclass's _ok() method to the validated user input.
+        Remains None if the user cancels or closes the window.
+    """
 
     def __init__(
         self, parent_widget, title: str, width: int = 380, height: int = 230
     ) -> None:
+        """
+        Parameters
+        ----------
+        parent_widget : tk.Widget
+            Any widget whose root window is used as the transient parent.
+        title : str
+            Window title shown in the OS title bar.
+        width : int
+            Fixed dialog width in pixels.
+        height : int
+            Fixed dialog height in pixels.
+        """
         root = parent_widget.winfo_toplevel()
         super().__init__(root)
         self.title(title)
@@ -19,6 +66,7 @@ class _Modal(ctk.CTkToplevel):
         # Size first so update_idletasks can compute position
         self.geometry(f"{width}x{height}")
         self.update_idletasks()
+        # Centre over the root window
         rx = root.winfo_x() + root.winfo_width() // 2 - width // 2
         ry = root.winfo_y() + root.winfo_height() // 2 - height // 2
         self.geometry(f"{width}x{height}+{max(0, rx)}+{max(0, ry)}")
@@ -26,12 +74,31 @@ class _Modal(ctk.CTkToplevel):
         self.transient(root)
 
     def _wait(self):
+        """
+        Block until the dialog is dismissed and return the result.
+
+        Grabs all events (preventing interaction with the parent window),
+        then enters the Tk event loop until this window is destroyed.
+
+        Returns
+        -------
+        Any
+            self.result as set by the subclass's _ok() method, or None if
+            the user closed/cancelled without confirming.
+        """
         self.grab_set()
         self.wait_window(self)
         return self.result
 
 
 class _ProcessDialog(_Modal):
+    """
+    Modal dialog for creating a new Process.
+
+    Prompts the user for a process name (non-empty string). Pressing Enter
+    or clicking "add" validates and closes the dialog with the name as result.
+    """
+
     def __init__(self, parent_widget) -> None:
         super().__init__(parent_widget, "ADD PROCESS", 380, 220)
 
@@ -120,6 +187,7 @@ class _ProcessDialog(_Modal):
         ).pack(side="left", padx=8)
 
     def _ok(self) -> None:
+        """Validate the name entry and close with the result, or show an error."""
         name = self._name_var.get().strip()
 
         if not name:
@@ -131,6 +199,14 @@ class _ProcessDialog(_Modal):
 
 
 class _TaskDialog(_Modal):
+    """
+    Modal dialog for adding a Task to a Process.
+
+    Collects both a task name (non-empty string) and a processing time
+    (positive integer, representing simulation cycles). Returns a
+    (name, processing_time) tuple as the result.
+    """
+
     def __init__(self, parent_widget) -> None:
         super().__init__(parent_widget, "ADD TASK", 400, 320)
 
@@ -251,6 +327,7 @@ class _TaskDialog(_Modal):
         ).pack(side="left", padx=8)
 
     def _ok(self) -> None:
+        """Validate both fields and close with (name, time) tuple, or show an error."""
         name = self._name_var.get().strip()
 
         if not name:
@@ -274,6 +351,13 @@ class _TaskDialog(_Modal):
 
 
 class _ProductCountDialog(_Modal):
+    """
+    Modal dialog for specifying how many products to inject at simulation start.
+
+    Accepts a non-negative integer (0 = run continuously until manually stopped).
+    Returns the count as an int result.
+    """
+
     def __init__(self, parent_widget) -> None:
         super().__init__(parent_widget, "START SIMULATION", 380, 240)
 
@@ -318,12 +402,13 @@ class _ProductCountDialog(_Modal):
         ).pack(side="left", padx=6)
 
     def _ok(self) -> None:
+        """Validate the count entry and close with the integer result, or show an error."""
         try:
             n = int(self._count_var.get())
-            if n < 1:
+            if n < 0:
                 raise ValueError
         except ValueError:
-            self._err.configure(text="Enter a positive integer.")
+            self._err.configure(text="Enter a positive integer or 0.")
             return
         self.result = n
         self.destroy()
@@ -332,12 +417,53 @@ class _ProductCountDialog(_Modal):
 # ── Public helpers ────────────────────────────────────────────────────────────
 
 def ask_process_name(widget) -> str | None:
+    """
+    Open a blocking modal dialog to collect a process name from the user.
+
+    Parameters
+    ----------
+    widget : tk.Widget
+        Any widget in the application; used to locate the root window for
+        transient parenting and screen-centre calculation.
+
+    Returns
+    -------
+    str | None
+        The validated non-empty process name, or None if the user cancelled.
+    """
     return _ProcessDialog(widget)._wait()
 
 
 def ask_task_details(widget) -> tuple[str, int] | None:
+    """
+    Open a blocking modal dialog to collect task name and processing time.
+
+    Parameters
+    ----------
+    widget : tk.Widget
+        Any widget in the application.
+
+    Returns
+    -------
+    tuple[str, int] | None
+        A (name, processing_time) pair where processing_time is a positive
+        integer (simulation cycles), or None if the user cancelled.
+    """
     return _TaskDialog(widget)._wait()
 
 
 def ask_product_count(widget) -> int | None:
+    """
+    Open a blocking modal dialog to ask how many products to simulate.
+
+    Parameters
+    ----------
+    widget : tk.Widget
+        Any widget in the application.
+
+    Returns
+    -------
+    int | None
+        A non-negative integer product count, or None if the user cancelled.
+    """
     return _ProductCountDialog(widget)._wait()
