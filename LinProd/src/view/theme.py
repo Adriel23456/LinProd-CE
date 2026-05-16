@@ -1,3 +1,29 @@
+"""
+theme.py
+--------
+Central design-token registry for the LinProd GUI.
+
+All colours, font families, and shared path constants live here so that every
+view file imports from a single source of truth. Changing a value here
+immediately propagates to every widget that references it.
+
+Responsibilities:
+  - Declare path constants: ASSETS_DIR, FONTS_DIR, LOGO_PATH, BG_IMAGE_PATH.
+  - Register the TRY Tosh A / B font families via pyglet so CustomTkinter can
+    address them by name (FONT_BLACK, FONT_BOLD, FONT_MEDIUM, etc.).
+  - Expose the colour palette (BG_MAIN, NEON, NEON_RED, …) as module-level
+    string constants.
+  - Provide the font() helper that returns a CTkFont with the correct family
+    and weight for a given size.
+  - Export TTK scrollbar style names (H_SCROLL, V_SCROLL) used by tk.Canvas
+    scrollbars in SetupView and SimulationView.
+
+Font loading:
+  pyglet.font.add_file() registers each TTF with the OS font subsystem so that
+  Tkinter's font engine can resolve the family name. This happens at module
+  import time — a one-shot side effect.
+"""
+
 from __future__ import annotations
 import pathlib
 import pyglet
